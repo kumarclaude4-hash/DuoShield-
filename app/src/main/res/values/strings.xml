@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">DuoShield</string>
+    <string name="send">Send</string>
+    <string name="attach">Attach</string>
+    <string name="record">Record</string>
+    <string name="pair">Pair</string>
+    <string name="chat">Chat</string>
+</resources>

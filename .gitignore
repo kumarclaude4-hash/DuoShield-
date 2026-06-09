@@ -1,0 +1,24 @@
+# Gradle files
+.gradle/
+build/
+
+# Local configuration
+local.properties
+
+# Log files
+*.log
+
+# Android Studio
+.idea/
+*.iml
+
+# APKs
+*.apk
+*.ap_
+
+# Generated files
+captures/
+
+# Firebase — NEVER commit these
+app/src/main/assets/service-account.json
+google-services.json

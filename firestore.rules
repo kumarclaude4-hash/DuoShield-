@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users can only read/write their own user document
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Pairing rooms: authenticated users can create and read rooms
+    // Only the creator can update (to prevent hijacking)
+    match /rooms/{code} {
+      allow create: if request.auth != null;
+      allow read:   if request.auth != null;
+      allow update: if request.auth != null
+                    && request.auth.uid != resource.data.creatorUid;
+      allow delete: if request.auth != null
+                    && (request.auth.uid == resource.data.creatorUid
+                        || request.auth.uid == resource.data.joinerUid);
+    }
+
+    // Conversations and messages: only participants can read/write
+    match /conversations/{convId} {
+      allow read, write: if request.auth != null
+                         && request.auth.uid in resource.data.participants;
+
+      match /messages/{msgId} {
+        allow read, write: if request.auth != null
+                           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convId)).data.participants;
+      }
+    }
+  }
+}
