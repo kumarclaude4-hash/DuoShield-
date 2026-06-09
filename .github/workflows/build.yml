@@ -5,7 +5,7 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch: # allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build:
@@ -36,24 +36,38 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Write service-account.json if secret exists
+      - name: Inject google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "❌ ERROR: GOOGLE_SERVICES_JSON secret is not set."
+            echo "Go to your GitHub repo → Settings → Secrets → Actions → New secret"
+            echo "Name: GOOGLE_SERVICES_JSON"
+            echo "Value: (paste the full contents of your google-services.json file)"
+            exit 1
+          fi
+          echo "$GOOGLE_SERVICES_JSON" > app/src/main/google-services.json
+          echo "✅ google-services.json written successfully"
+
+      - name: Write service-account.json
         env:
           SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
         run: |
           mkdir -p app/src/main/assets
           if [ -n "$SERVICE_ACCOUNT_JSON" ]; then
             echo "$SERVICE_ACCOUNT_JSON" > app/src/main/assets/service-account.json
-            echo "service-account.json written from secret."
+            echo "✅ service-account.json written from secret"
           else
-            echo "No SERVICE_ACCOUNT_JSON secret found — FCM push will be disabled."
+            echo "ℹ️ No SERVICE_ACCOUNT_JSON secret — FCM HTTP v1 push will be skipped"
           fi
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DuoShield-debug
+          name: DuoShield-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 7
+          retention-days: 14
