@@ -21,15 +21,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-
-
       - name: Install Android SDK components
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
@@ -38,8 +29,17 @@ jobs:
             "platforms;android-34" \
             "build-tools;34.0.0"
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+      - name: Fix gradlew (CRLF → LF) and download wrapper JAR
+        run: |
+          # Fix Windows line endings that cause silent failure on Linux
+          sed -i 's/\r//' gradlew
+          chmod +x gradlew
+          # Download the Gradle wrapper JAR (not included in zip)
+          mkdir -p gradle/wrapper
+          curl -fsSL \
+            "https://raw.githubusercontent.com/gradle/gradle/v8.2.0/gradle/wrapper/gradle-wrapper.jar" \
+            -o gradle/wrapper/gradle-wrapper.jar
+          echo "Wrapper JAR: $(wc -c < gradle/wrapper/gradle-wrapper.jar) bytes"
 
       - name: Inject google-services.json
         env:
@@ -61,8 +61,20 @@ jobs:
             printf '%s' "$SERVICE_ACCOUNT_JSON" > app/src/main/assets/service-account.json
           fi
 
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          echo "APK check:"
+          find . -name "*.apk" 2>/dev/null || echo "No APKs found"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -77,7 +89,7 @@ jobs:
           KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
         run: |
           printf '%s' "$KEYSTORE_FILE" | base64 --decode > app/duoshield-release.p12
-          echo "✅ Keystore decoded ($(wc -c < app/duoshield-release.p12) bytes)"
+          echo "✅ Keystore: $(wc -c < app/duoshield-release.p12) bytes"
 
       - name: Build release APK
         env:
