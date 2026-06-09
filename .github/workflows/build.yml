@@ -29,17 +29,13 @@ jobs:
             "platforms;android-34" \
             "build-tools;34.0.0"
 
-      - name: Fix gradlew (CRLF → LF) and download wrapper JAR
-        run: |
-          # Fix Windows line endings that cause silent failure on Linux
-          sed -i 's/\r//' gradlew
-          chmod +x gradlew
-          # Download the Gradle wrapper JAR (not included in zip)
-          mkdir -p gradle/wrapper
-          curl -fsSL \
-            "https://raw.githubusercontent.com/gradle/gradle/v8.2.0/gradle/wrapper/gradle-wrapper.jar" \
-            -o gradle/wrapper/gradle-wrapper.jar
-          echo "Wrapper JAR: $(wc -c < gradle/wrapper/gradle-wrapper.jar) bytes"
+      - name: Set up Gradle 8.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.2'
+
+      - name: Fix gradlew line endings
+        run: sed -i 's/\r//' gradlew && chmod +x gradlew
 
       - name: Inject google-services.json
         env:
@@ -61,20 +57,8 @@ jobs:
             printf '%s' "$SERVICE_ACCOUNT_JSON" > app/src/main/assets/service-account.json
           fi
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-
-
       - name: Build debug APK
-        run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace
-          echo "APK check:"
-          find . -name "*.apk" 2>/dev/null || echo "No APKs found"
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -97,7 +81,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          ./gradlew assembleRelease --no-daemon \
+          gradle assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=$PWD/app/duoshield-release.p12 \
             -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
             -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
