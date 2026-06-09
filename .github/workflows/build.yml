@@ -8,21 +8,21 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-debug:
-    name: Debug APK
+  build:
+    name: Build APKs
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - uses: android-actions/setup-android@v3
-
-      - uses: actions/cache@v4
+      - name: Cache Gradle
+        uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
@@ -30,60 +30,13 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      - name: Inject google-services.json
-        env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+      - name: Install Android SDK components
         run: |
-          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
-            echo "❌ GOOGLE_SERVICES_JSON secret not set — see repo Settings → Secrets"
-            exit 1
-          fi
-          echo "$GOOGLE_SERVICES_JSON" > app/src/main/google-services.json
-          echo "✅ google-services.json written"
-
-      - name: Write service-account.json
-        env:
-          SERVICE_ACCOUNT_JSON: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-        run: |
-          mkdir -p app/src/main/assets
-          if [ -n "$SERVICE_ACCOUNT_JSON" ]; then
-            echo "$SERVICE_ACCOUNT_JSON" > app/src/main/assets/service-account.json
-          fi
-
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: DuoShield-debug-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 14
-
-  build-release:
-    name: Release APK (signed)
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - uses: android-actions/setup-android@v3
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
 
       - name: Make gradlew executable
         run: chmod +x gradlew
@@ -96,7 +49,8 @@ jobs:
             echo "❌ GOOGLE_SERVICES_JSON secret not set"
             exit 1
           fi
-          echo "$GOOGLE_SERVICES_JSON" > app/src/main/google-services.json
+          printf '%s' "$GOOGLE_SERVICES_JSON" > app/src/main/google-services.json
+          echo "✅ google-services.json written ($(wc -c < app/src/main/google-services.json) bytes)"
 
       - name: Write service-account.json
         env:
@@ -104,19 +58,26 @@ jobs:
         run: |
           mkdir -p app/src/main/assets
           if [ -n "$SERVICE_ACCOUNT_JSON" ]; then
-            echo "$SERVICE_ACCOUNT_JSON" > app/src/main/assets/service-account.json
+            printf '%s' "$SERVICE_ACCOUNT_JSON" > app/src/main/assets/service-account.json
           fi
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DuoShield-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Decode signing keystore
         env:
           KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
         run: |
-          if [ -z "$KEYSTORE_FILE" ]; then
-            echo "❌ KEYSTORE_FILE secret not set — see repo Settings → Secrets"
-            exit 1
-          fi
-          echo "$KEYSTORE_FILE" | base64 --decode > app/duoshield-release.p12
-          echo "✅ Keystore decoded"
+          printf '%s' "$KEYSTORE_FILE" | base64 --decode > app/duoshield-release.p12
+          echo "✅ Keystore decoded ($(wc -c < app/duoshield-release.p12) bytes)"
 
       - name: Build release APK
         env:
@@ -124,17 +85,17 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          ./gradlew assembleRelease \
+          ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=$PWD/app/duoshield-release.p12 \
             -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
             -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
             -Pandroid.injected.signing.key.password="$KEY_PASSWORD" \
-            -Pandroid.injected.signing.store.type=PKCS12 \
-            --stacktrace
+            -Pandroid.injected.signing.store.type=PKCS12
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: DuoShield-release-${{ github.run_number }}
           path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
           retention-days: 30
