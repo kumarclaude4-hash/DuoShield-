@@ -45,8 +45,8 @@ jobs:
             echo "❌ GOOGLE_SERVICES_JSON secret not set"
             exit 1
           fi
-          printf '%s' "$GOOGLE_SERVICES_JSON" > app/src/main/google-services.json
-          echo "✅ google-services.json written ($(wc -c < app/src/main/google-services.json) bytes)"
+          printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+          echo "✅ google-services.json written ($(wc -c < app/google-services.json) bytes)"
 
       - name: Write service-account.json
         env:
