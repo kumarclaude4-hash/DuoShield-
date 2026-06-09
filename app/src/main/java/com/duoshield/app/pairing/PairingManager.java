@@ -259,6 +259,12 @@ public class PairingManager {
                .putString(KEY_MY_UID,       myUid)
                .putString(KEY_PARTNER_UID,  partnerUid)
                .apply();
+
+        // Store participants in Firestore so Cloud Functions can find the recipient
+        Map<String, Object> convData = new HashMap<>();
+        convData.put("participants", java.util.Arrays.asList(myUid, partnerUid));
+        db.collection("conversations").document(convId)
+          .set(convData, SetOptions.merge());
     }
 
     private void cleanupRoom(String code) {
