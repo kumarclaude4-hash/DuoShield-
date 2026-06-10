@@ -13,13 +13,63 @@
           android:elevation="4dp"
           app:titleTextColor="@android:color/white"/>
 
+      <!-- Pinned message banner (hidden until at least one message is pinned) -->
+      <LinearLayout
+          android:id="@+id/pinnedBanner"
+          android:orientation="horizontal"
+          android:gravity="center_vertical"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:background="#FFFFF9C4"
+          android:paddingStart="12dp"
+          android:paddingEnd="4dp"
+          android:paddingTop="6dp"
+          android:paddingBottom="6dp"
+          android:elevation="2dp"
+          android:visibility="gone">
+
+          <TextView
+              android:text="📌"
+              android:textSize="16sp"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:layout_marginEnd="8dp"/>
+
+          <TextView
+              android:id="@+id/pinnedText"
+              android:layout_width="0dp"
+              android:layout_height="wrap_content"
+              android:layout_weight="1"
+              android:textSize="13sp"
+              android:textColor="#333333"
+              android:maxLines="1"
+              android:ellipsize="end"/>
+
+          <TextView
+              android:id="@+id/pinnedCount"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:textSize="11sp"
+              android:textColor="#888888"
+              android:layout_marginStart="6dp"
+              android:layout_marginEnd="4dp"/>
+
+          <ImageView
+              android:id="@+id/pinnedCloseBtn"
+              android:layout_width="36dp"
+              android:layout_height="36dp"
+              android:src="@android:drawable/ic_menu_close_clear_cancel"
+              android:padding="8dp"
+              android:contentDescription="Dismiss pin banner"/>
+      </LinearLayout>
+
       <androidx.recyclerview.widget.RecyclerView
           android:id="@+id/messageRecycler"
           android:layout_width="match_parent"
           android:layout_height="0dp"
           android:layout_weight="1"/>
 
-      <!-- F1: Typing indicator -->
+      <!-- Typing indicator -->
       <TextView
           android:id="@+id/typingIndicator"
           android:layout_width="wrap_content"
@@ -42,7 +92,7 @@
           android:progress="0"
           android:visibility="gone"/>
 
-      <!-- F3: Reply preview bar (shown when user long-presses a message to reply) -->
+      <!-- Reply preview bar -->
       <LinearLayout
           android:id="@+id/replyPreviewBar"
           android:orientation="horizontal"
