@@ -17,6 +17,7 @@ package com.duoshield.app;
   import android.widget.Button;
   import android.widget.EditText;
   import android.widget.ImageView;
+  import android.widget.LinearLayout;
   import android.widget.ProgressBar;
   import android.widget.TextView;
   import android.widget.Toast;
@@ -55,8 +56,10 @@ package com.duoshield.app;
   import java.util.ArrayList;
   import java.util.Arrays;
   import java.util.HashMap;
+  import java.util.HashSet;
   import java.util.List;
   import java.util.Map;
+  import java.util.Set;
   import java.util.UUID;
   import java.util.concurrent.ExecutorService;
   import java.util.concurrent.Executors;
@@ -70,14 +73,20 @@ package com.duoshield.app;
               "https://fcm.googleapis.com/v1/projects/duoshield-8caf1/messages:send";
       private static final String FCM_SCOPE    =
               "https://www.googleapis.com/auth/firebase.messaging";
+      private static final int    MAX_PINS     = 3;
 
-      // F1: Typing indicator debounce
+      // Typing debounce
       private final Handler typingHandler = new Handler(Looper.getMainLooper());
       private boolean isTyping = false;
 
-      // F3: Reply state
+      // Reply state
       private String pendingReplyId      = null;
       private String pendingReplyPreview = null;
+
+      // ── Pinned messages ──────────────────────────────────────────
+      // Each entry: { "id": msgId, "preview": "..." }
+      private List<Map<String, Object>> pinnedList = new ArrayList<>();
+      private int                       pinnedViewIdx = 0; // which pin is shown in banner
 
       private FirebaseFirestore db;
       private StorageReference  storageRef;
@@ -90,6 +99,11 @@ package com.duoshield.app;
       private TextView          replyPreviewBarText;
       private ImageView         cancelReplyBtn;
 
+      // Pinned banner views
+      private LinearLayout      pinnedBanner;
+      private TextView          pinnedText, pinnedCount;
+      private ImageView         pinnedCloseBtn;
+
       private List<Message>     messages;
       private MessageAdapter    adapter;
 
@@ -99,7 +113,6 @@ package com.duoshield.app;
 
       private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor();
 
-      // Media pickers
       private final ActivityResultLauncher<String> pickImageLauncher =
           registerForActivityResult(new ActivityResultContracts.GetContent(),
               uri -> { if (uri != null) uploadMedia(uri, "image"); });
@@ -158,10 +171,14 @@ package com.duoshield.app;
           replyPreviewBar     = findViewById(R.id.replyPreviewBar);
           replyPreviewBarText = findViewById(R.id.replyPreviewBarText);
           cancelReplyBtn      = findViewById(R.id.cancelReplyBtn);
+          pinnedBanner        = findViewById(R.id.pinnedBanner);
+          pinnedText          = findViewById(R.id.pinnedText);
+          pinnedCount         = findViewById(R.id.pinnedCount);
+          pinnedCloseBtn      = findViewById(R.id.pinnedCloseBtn);
 
           messages = new ArrayList<>();
           adapter  = new MessageAdapter(messages, myUid, null,
-              (msg, anchor) -> showMessageActionDialog(msg));  // F3 & F5 long press
+              (msg, anchor) -> showMessageActionDialog(msg));
           recyclerView.setAdapter(adapter);
           recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
@@ -171,36 +188,174 @@ package com.duoshield.app;
           applyWallpaper();
           listenForMessages();
           listenForPartnerSeen();
-          listenForTyping();      // F1
+          listenForTyping();
+          listenForPins();       // pin banner
 
           sendButton.setOnClickListener(v -> {
               String text = messageInput.getText().toString().trim();
               if (!text.isEmpty()) { sendMessage(text); messageInput.setText(""); }
           });
           uploadButton.setOnClickListener(v -> showMediaTypePopup());
+          cancelReplyBtn.setOnClickListener(v -> clearReplyMode());
 
-          // F1: typing detection
           messageInput.addTextChangedListener(new TextWatcher() {
               @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
               @Override public void onTextChanged(CharSequence s, int st, int b, int c) { onUserTyping(); }
               @Override public void afterTextChanged(Editable s) {}
           });
 
-          // F3: cancel reply
-          cancelReplyBtn.setOnClickListener(v -> clearReplyMode());
+          // Pinned banner: tap = cycle through pins / scroll to message; X = dismiss banner
+          pinnedBanner.setOnClickListener(v -> cycleAndScrollToPin());
+          pinnedCloseBtn.setOnClickListener(v -> pinnedBanner.setVisibility(View.GONE));
       }
 
-      @Override
-      protected void onResume() {
+      @Override protected void onResume() {
           super.onResume();
           markAsSeen();
           clearBadge();
           applyWallpaper();
       }
 
-      // ═══════════════════════════════════════════════════════════════
-      // F1: TYPING INDICATOR
-      // ═══════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════
+      // MESSAGE PINNING
+      // ══════════════════════════════════════════════════════════════
+
+      private void listenForPins() {
+          db.collection("conversations").document(conversationId)
+            .addSnapshotListener((snap, e) -> {
+                if (snap == null) return;
+
+                // Pinned list is stored as an array of maps: [{id, preview}]
+                List<Map<String, Object>> raw =
+                    (List<Map<String, Object>>) snap.get("pinnedMessages");
+                pinnedList = raw != null ? raw : new ArrayList<>();
+
+                // Update adapter pin highlights
+                Set<String> ids = new HashSet<>();
+                for (Map<String, Object> m : pinnedList) {
+                    Object id = m.get("id");
+                    if (id instanceof String) ids.add((String) id);
+                }
+                adapter.updatePinnedIds(ids);
+
+                // Update banner
+                refreshPinnedBanner();
+
+                // Also handle typing from this listener (reuse single snapshot listener)
+                Object val = snap.get("typing_" + partnerUid);
+                if (typingIndicator != null)
+                    typingIndicator.setVisibility(Boolean.TRUE.equals(val) ? View.VISIBLE : View.GONE);
+            });
+      }
+
+      private void refreshPinnedBanner() {
+          if (pinnedList.isEmpty()) {
+              pinnedBanner.setVisibility(View.GONE);
+              return;
+          }
+          pinnedBanner.setVisibility(View.VISIBLE);
+          // Clamp index
+          if (pinnedViewIdx >= pinnedList.size()) pinnedViewIdx = 0;
+          Map<String, Object> pin = pinnedList.get(pinnedViewIdx);
+          Object preview = pin.get("preview");
+          pinnedText.setText(preview != null ? preview.toString() : "Pinned message");
+          if (pinnedList.size() > 1)
+              pinnedCount.setText((pinnedViewIdx + 1) + "/" + pinnedList.size());
+          else
+              pinnedCount.setText("");
+      }
+
+      private void cycleAndScrollToPin() {
+          if (pinnedList.isEmpty()) return;
+          pinnedViewIdx = (pinnedViewIdx + 1) % pinnedList.size();
+          refreshPinnedBanner();
+          // Scroll to the message in the list
+          Map<String, Object> pin = pinnedList.get(pinnedViewIdx);
+          Object targetId = pin.get("id");
+          if (targetId == null) return;
+          for (int i = 0; i < messages.size(); i++) {
+              if (targetId.toString().equals(messages.get(i).getId())) {
+                  recyclerView.smoothScrollToPosition(i);
+                  break;
+              }
+          }
+      }
+
+      private void pinMessage(Message msg) {
+          // Check if already pinned
+          for (Map<String, Object> p : pinnedList) {
+              if (msg.getId().equals(p.get("id"))) {
+                  Toast.makeText(this, "Already pinned", Toast.LENGTH_SHORT).show();
+                  return;
+              }
+          }
+          if (pinnedList.size() >= MAX_PINS) {
+              Toast.makeText(this, "Max " + MAX_PINS + " pins reached. Unpin one first.", Toast.LENGTH_SHORT).show();
+              return;
+          }
+          String preview = (msg.getText() != null && !msg.getText().isEmpty())
+              ? msg.getText() : "[media]";
+          Map<String, Object> entry = new HashMap<>();
+          entry.put("id",      msg.getId());
+          entry.put("preview", preview);
+
+          db.collection("conversations").document(conversationId)
+            .update("pinnedMessages", FieldValue.arrayUnion(entry))
+            .addOnSuccessListener(v -> Toast.makeText(this, "Message pinned 📌", Toast.LENGTH_SHORT).show())
+            .addOnFailureListener(ex -> {
+                // Field may not exist yet — set it
+                Map<String, Object> initDoc = new HashMap<>();
+                initDoc.put("pinnedMessages", Arrays.asList(entry));
+                db.collection("conversations").document(conversationId)
+                  .set(initDoc, com.google.firebase.firestore.SetOptions.merge())
+                  .addOnSuccessListener(v2 -> Toast.makeText(this, "Message pinned 📌", Toast.LENGTH_SHORT).show());
+            });
+      }
+
+      private void unpinMessage(Message msg) {
+          Map<String, Object> toRemove = null;
+          for (Map<String, Object> p : pinnedList) {
+              if (msg.getId().equals(p.get("id"))) { toRemove = p; break; }
+          }
+          if (toRemove == null) { Toast.makeText(this, "Not pinned", Toast.LENGTH_SHORT).show(); return; }
+          db.collection("conversations").document(conversationId)
+            .update("pinnedMessages", FieldValue.arrayRemove(toRemove))
+            .addOnSuccessListener(v -> Toast.makeText(this, "Unpinned", Toast.LENGTH_SHORT).show());
+      }
+
+      private boolean isPinned(Message msg) {
+          for (Map<String, Object> p : pinnedList) {
+              if (msg.getId().equals(p.get("id"))) return true;
+          }
+          return false;
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // MESSAGE ACTION DIALOG (long press) — includes Pin/Unpin
+      // ══════════════════════════════════════════════════════════════
+
+      private void showMessageActionDialog(Message msg) {
+          boolean pinned = isPinned(msg);
+          String[] options = {
+              pinned ? "📌 Unpin" : "📌 Pin",
+              "↩ Reply",
+              "😀 React",
+              "🗑 Delete (local)"
+          };
+          new AlertDialog.Builder(this)
+              .setItems(options, (d, which) -> {
+                  switch (which) {
+                      case 0: if (pinned) unpinMessage(msg); else pinMessage(msg); break;
+                      case 1: enterReplyMode(msg); break;
+                      case 2: showReactionPicker(msg); break;
+                      case 3: deleteMessageLocally(msg); break;
+                  }
+              }).show();
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // TYPING INDICATOR
+      // ══════════════════════════════════════════════════════════════
 
       private void onUserTyping() {
           if (!isTyping) {
@@ -217,30 +372,12 @@ package com.duoshield.app;
       }
 
       private void listenForTyping() {
-          if (partnerUid == null || conversationId == null) return;
-          db.collection("conversations").document(conversationId)
-            .addSnapshotListener((snap, e) -> {
-                if (snap == null) return;
-                Object val = snap.get("typing_" + partnerUid);
-                boolean partnerTyping = Boolean.TRUE.equals(val);
-                if (typingIndicator != null)
-                    typingIndicator.setVisibility(partnerTyping ? View.VISIBLE : View.GONE);
-            });
+          // Typing is now handled inside listenForPins() snapshot listener — no-op here
       }
 
-      // ═══════════════════════════════════════════════════════════════
-      // F3: REPLY MODE — long press → show reply bar → send with context
-      // ═══════════════════════════════════════════════════════════════
-
-      private void showMessageActionDialog(Message msg) {
-          String[] options = {"↩ Reply", "😀 React", "🗑 Delete (local)"};
-          new AlertDialog.Builder(this)
-              .setItems(options, (d, which) -> {
-                  if (which == 0) enterReplyMode(msg);
-                  else if (which == 1) showReactionPicker(msg);
-                  else deleteMessageLocally(msg);
-              }).show();
-      }
+      // ══════════════════════════════════════════════════════════════
+      // REPLY MODE
+      // ══════════════════════════════════════════════════════════════
 
       private void enterReplyMode(Message msg) {
           pendingReplyId      = msg.getId();
@@ -252,42 +389,24 @@ package com.duoshield.app;
       }
 
       private void clearReplyMode() {
-          pendingReplyId      = null;
-          pendingReplyPreview = null;
+          pendingReplyId = null; pendingReplyPreview = null;
           replyPreviewBar.setVisibility(View.GONE);
       }
 
-      // ═══════════════════════════════════════════════════════════════
-      // F4: DISAPPEARING MESSAGES — apply expiresAt when sending
-      // ═══════════════════════════════════════════════════════════════
-
-      private long getDisappearMs() {
-          return getSharedPreferences("duoshield_prefs", MODE_PRIVATE)
-              .getLong("disappear_ms", 0);
-      }
-
-      private boolean isExpired(Message m) {
-          return m.getExpiresAt() > 0 && System.currentTimeMillis() > m.getExpiresAt();
-      }
-
-      // ═══════════════════════════════════════════════════════════════
-      // F5: REACTION PICKER
-      // ═══════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════
+      // REACTIONS
+      // ══════════════════════════════════════════════════════════════
 
       private void showReactionPicker(Message msg) {
           String[] emojis = {"👍", "❤️", "😂", "😮", "😢", "🙏"};
-          new AlertDialog.Builder(this)
-              .setTitle("React")
-              .setItems(emojis, (d, which) -> sendReaction(msg, emojis[which]))
-              .show();
+          new AlertDialog.Builder(this).setTitle("React")
+              .setItems(emojis, (d, w) -> sendReaction(msg, emojis[w])).show();
       }
 
       private void sendReaction(Message msg, String emoji) {
-          // Update in Firestore
           db.collection("conversations").document(conversationId)
             .collection("messages").document(msg.getId())
             .update("reaction", emoji);
-          // Update local list
           msg.setReaction(emoji);
           int idx = messages.indexOf(msg);
           if (idx >= 0) adapter.notifyItemChanged(idx);
@@ -295,110 +414,24 @@ package com.duoshield.app;
 
       private void deleteMessageLocally(Message msg) {
           int idx = messages.indexOf(msg);
-          if (idx >= 0) {
-              messages.remove(idx);
-              adapter.notifyItemRemoved(idx);
-          }
+          if (idx >= 0) { messages.remove(idx); adapter.notifyItemRemoved(idx); }
       }
 
-      // ═══════════════════════════════════════════════════════════════
-      // EXISTING FEATURES (unchanged from previous batch)
-      // ═══════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════
+      // DISAPPEARING MESSAGES
+      // ══════════════════════════════════════════════════════════════
 
-      private void showMediaTypePopup() {
-          new AlertDialog.Builder(this)
-              .setTitle("Share")
-              .setItems(new String[]{"Image", "Video", "Profile Card"}, (d, w) -> {
-                  if      (w == 0) pickImageLauncher.launch("image/*");
-                  else if (w == 1) pickVideoLauncher.launch("video/*");
-                  else             sendContactCard();
-              }).show();
+      private long getDisappearMs() {
+          return getSharedPreferences("duoshield_prefs", MODE_PRIVATE).getLong("disappear_ms", 0);
       }
 
-      private void uploadMedia(Uri fileUri, String mediaType) {
-          String ext = "video".equals(mediaType) ? ".mp4" : ".jpg";
-          StorageReference ref = storageRef.child("media").child(conversationId).child(UUID.randomUUID() + ext);
-          uploadProgress.setVisibility(View.VISIBLE);
-          uploadProgress.setProgress(0);
-          uploadButton.setEnabled(false);
-          ref.putFile(fileUri)
-              .addOnProgressListener(s -> uploadProgress.setProgress((int) (100.0 * s.getBytesTransferred() / s.getTotalByteCount())))
-              .addOnFailureListener(e -> {
-                  Toast.makeText(this, "Upload failed", Toast.LENGTH_SHORT).show();
-                  uploadProgress.setVisibility(View.GONE); uploadButton.setEnabled(true);
-              })
-              .addOnSuccessListener(s -> ref.getDownloadUrl()
-                  .addOnSuccessListener(uri -> {
-                      uploadProgress.setVisibility(View.GONE); uploadButton.setEnabled(true);
-                      sendMediaMessage(uri.toString(), mediaType);
-                  })
-                  .addOnFailureListener(e -> { uploadProgress.setVisibility(View.GONE); uploadButton.setEnabled(true); })
-              );
+      private boolean isExpired(Message m) {
+          return m.getExpiresAt() > 0 && System.currentTimeMillis() > m.getExpiresAt();
       }
 
-      private void sendMediaMessage(String mediaUrl, String mediaType) {
-          String msgId = UUID.randomUUID().toString();
-          long   now   = System.currentTimeMillis();
-          long   ttl   = getDisappearMs();
-          long   exp   = ttl > 0 ? now + ttl : 0;
-          Map<String, Object> doc = new HashMap<>();
-          doc.put("id", msgId); doc.put("conversationId", conversationId);
-          doc.put("sender", myUid); doc.put("text", "");
-          doc.put("mediaUrl", mediaUrl); doc.put("mediaType", mediaType);
-          doc.put("isEncrypted", false); doc.put("type", mediaType);
-          doc.put("expiresAt", exp);
-          doc.put("timestamp", FieldValue.serverTimestamp());
-          db.collection("conversations").document(conversationId)
-            .collection("messages").document(msgId).set(doc)
-            .addOnSuccessListener(v -> {
-                Message m = new Message(msgId, conversationId, myUid, "", now, false, mediaUrl, mediaType);
-                m.setExpiresAt(exp);
-                saveToRoom(m);
-                notifyPartner("DuoShield", "video".equals(mediaType) ? "Sent a video" : "Sent an image");
-            });
-      }
-
-      private void sendContactCard() {
-          String cardText = "DuoShield User|" + myUid;
-          String msgId    = UUID.randomUUID().toString();
-          long   now      = System.currentTimeMillis();
-          Map<String, Object> doc = new HashMap<>();
-          doc.put("id", msgId); doc.put("conversationId", conversationId);
-          doc.put("sender", myUid); doc.put("text", cardText);
-          doc.put("mediaType", "contact_card"); doc.put("type", "contact_card");
-          doc.put("isEncrypted", false); doc.put("timestamp", FieldValue.serverTimestamp());
-          db.collection("conversations").document(conversationId)
-            .collection("messages").document(msgId).set(doc)
-            .addOnSuccessListener(v -> {
-                saveToRoom(new Message(msgId, conversationId, myUid, cardText, now, false, null, "contact_card"));
-                notifyPartner("DuoShield", "Shared a profile card");
-            });
-      }
-
-      private void markAsSeen() {
-          if (conversationId == null || myUid == null) return;
-          db.collection("conversations").document(conversationId)
-            .update("lastSeen_" + myUid, FieldValue.serverTimestamp());
-      }
-
-      private void listenForPartnerSeen() {
-          if (partnerUid == null || conversationId == null) return;
-          db.collection("conversations").document(conversationId)
-            .addSnapshotListener((snap, e) -> {
-                if (snap == null || !snap.exists()) return;
-                Object ts = snap.get("lastSeen_" + partnerUid);
-                if (ts == null) return;
-                long seenMs = (ts instanceof com.google.firebase.Timestamp)
-                    ? ((com.google.firebase.Timestamp) ts).toDate().getTime() : 0;
-                boolean changed = false;
-                for (Message m : messages) {
-                    if (myUid.equals(m.getSender()) && !m.isSeen() && m.getTimestamp() <= seenMs) {
-                        m.setSeen(true); changed = true;
-                    }
-                }
-                if (changed) adapter.notifyDataSetChanged();
-            });
-      }
+      // ══════════════════════════════════════════════════════════════
+      // WALLPAPER
+      // ══════════════════════════════════════════════════════════════
 
       private void applyWallpaper() {
           if (recyclerView == null) return;
@@ -424,16 +457,24 @@ package com.duoshield.app;
           new AlertDialog.Builder(this).setTitle("Chat wallpaper")
               .setItems(opts, (d, w) -> {
                   SharedPreferences.Editor ed = getSharedPreferences("duoshield_prefs", MODE_PRIVATE).edit();
-                  if (w == opts.length - 1) { pickWallpaperLauncher.launch("image/*"); }
+                  if (w == opts.length - 1) pickWallpaperLauncher.launch("image/*");
                   else if (w == 0) { ed.putString("wallpaper_type", "none").apply(); applyWallpaper(); }
                   else { ed.putString("wallpaper_type", "color").putInt("wallpaper_color", colors[w]).apply(); applyWallpaper(); }
               }).show();
       }
 
+      // ══════════════════════════════════════════════════════════════
+      // BADGE
+      // ══════════════════════════════════════════════════════════════
+
       private void clearBadge() {
           NotificationManagerCompat.from(this).cancelAll();
           getSharedPreferences("duoshield_prefs", MODE_PRIVATE).edit().putInt("badge_count", 0).apply();
       }
+
+      // ══════════════════════════════════════════════════════════════
+      // MENU
+      // ══════════════════════════════════════════════════════════════
 
       @Override public boolean onCreateOptionsMenu(Menu menu) {
           getMenuInflater().inflate(R.menu.chat_menu, menu); return true;
@@ -444,6 +485,76 @@ package com.duoshield.app;
           if (id == R.id.action_settings) { startActivity(new Intent(this, SettingsActivity.class)); return true; }
           if (id == R.id.action_wallpaper) { showWallpaperDialog(); return true; }
           return super.onOptionsItemSelected(item);
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // CORE: SEND / LISTEN
+      // ══════════════════════════════════════════════════════════════
+
+      private void showMediaTypePopup() {
+          new AlertDialog.Builder(this).setTitle("Share")
+              .setItems(new String[]{"Image", "Video", "Profile Card"}, (d, w) -> {
+                  if      (w == 0) pickImageLauncher.launch("image/*");
+                  else if (w == 1) pickVideoLauncher.launch("video/*");
+                  else             sendContactCard();
+              }).show();
+      }
+
+      private void uploadMedia(Uri fileUri, String mediaType) {
+          String ext = "video".equals(mediaType) ? ".mp4" : ".jpg";
+          StorageReference ref = storageRef.child("media").child(conversationId).child(UUID.randomUUID() + ext);
+          uploadProgress.setVisibility(View.VISIBLE); uploadProgress.setProgress(0);
+          uploadButton.setEnabled(false);
+          ref.putFile(fileUri)
+              .addOnProgressListener(s -> uploadProgress.setProgress(
+                  (int) (100.0 * s.getBytesTransferred() / s.getTotalByteCount())))
+              .addOnFailureListener(e -> {
+                  Toast.makeText(this, "Upload failed", Toast.LENGTH_SHORT).show();
+                  uploadProgress.setVisibility(View.GONE); uploadButton.setEnabled(true);
+              })
+              .addOnSuccessListener(s -> ref.getDownloadUrl().addOnSuccessListener(uri -> {
+                  uploadProgress.setVisibility(View.GONE); uploadButton.setEnabled(true);
+                  sendMediaMessage(uri.toString(), mediaType);
+              }).addOnFailureListener(e -> {
+                  uploadProgress.setVisibility(View.GONE); uploadButton.setEnabled(true);
+              }));
+      }
+
+      private void sendMediaMessage(String mediaUrl, String mediaType) {
+          String msgId = UUID.randomUUID().toString();
+          long   now   = System.currentTimeMillis();
+          long   ttl   = getDisappearMs();
+          long   exp   = ttl > 0 ? now + ttl : 0;
+          Map<String, Object> doc = new HashMap<>();
+          doc.put("id", msgId); doc.put("conversationId", conversationId);
+          doc.put("sender", myUid); doc.put("text", "");
+          doc.put("mediaUrl", mediaUrl); doc.put("mediaType", mediaType);
+          doc.put("isEncrypted", false); doc.put("type", mediaType);
+          doc.put("expiresAt", exp); doc.put("timestamp", FieldValue.serverTimestamp());
+          db.collection("conversations").document(conversationId)
+            .collection("messages").document(msgId).set(doc)
+            .addOnSuccessListener(v -> {
+                Message m = new Message(msgId, conversationId, myUid, "", now, false, mediaUrl, mediaType);
+                m.setExpiresAt(exp); saveToRoom(m);
+                notifyPartner("DuoShield", "video".equals(mediaType) ? "Sent a video" : "Sent an image");
+            });
+      }
+
+      private void sendContactCard() {
+          String cardText = "DuoShield User|" + myUid;
+          String msgId    = UUID.randomUUID().toString();
+          long   now      = System.currentTimeMillis();
+          Map<String, Object> doc = new HashMap<>();
+          doc.put("id", msgId); doc.put("conversationId", conversationId);
+          doc.put("sender", myUid); doc.put("text", cardText);
+          doc.put("mediaType", "contact_card"); doc.put("type", "contact_card");
+          doc.put("isEncrypted", false); doc.put("timestamp", FieldValue.serverTimestamp());
+          db.collection("conversations").document(conversationId)
+            .collection("messages").document(msgId).set(doc)
+            .addOnSuccessListener(v -> {
+                saveToRoom(new Message(msgId, conversationId, myUid, cardText, now, false, null, "contact_card"));
+                notifyPartner("DuoShield", "Shared a profile card");
+            });
       }
 
       private void sendMessage(String plaintext) {
@@ -460,31 +571,37 @@ package com.duoshield.app;
           long   now     = System.currentTimeMillis();
           long   ttl     = getDisappearMs();
           long   exp     = ttl > 0 ? now + ttl : 0;
-
-          // F3: reply context
-          String replyId      = pendingReplyId;
-          String replyPreview = pendingReplyPreview;
+          String rId     = pendingReplyId;
+          String rPrv    = pendingReplyPreview;
           clearReplyMode();
-
           Map<String, Object> doc = new HashMap<>();
           doc.put("id", msgId); doc.put("conversationId", conversationId);
           doc.put("sender", myUid); doc.put("text", ciphertext);
           doc.put("isEncrypted", true); doc.put("type", "text");
           doc.put("expiresAt", exp);
-          if (replyId != null) { doc.put("replyToId", replyId); doc.put("replyPreview", replyPreview); }
+          if (rId != null) { doc.put("replyToId", rId); doc.put("replyPreview", rPrv); }
           doc.put("timestamp", FieldValue.serverTimestamp());
-
           final String fc = ciphertext;
           db.collection("conversations").document(conversationId)
             .collection("messages").document(msgId).set(doc)
             .addOnSuccessListener(v -> {
                 Message m = new Message(msgId, conversationId, myUid, fc, now, true);
                 m.setExpiresAt(exp);
-                if (replyId != null) { m.setReplyToId(replyId); m.setReplyPreview(replyPreview); }
+                if (rId != null) { m.setReplyToId(rId); m.setReplyPreview(rPrv); }
                 saveToRoom(m);
                 notifyPartner("DuoShield", "New message");
             })
             .addOnFailureListener(e -> Toast.makeText(this, "Failed to send.", Toast.LENGTH_SHORT).show());
+      }
+
+      private void markAsSeen() {
+          if (conversationId == null || myUid == null) return;
+          db.collection("conversations").document(conversationId)
+            .update("lastSeen_" + myUid, FieldValue.serverTimestamp());
+      }
+
+      private void listenForPartnerSeen() {
+          // Note: partner seen is handled inside listenForPins() via same snapshot listener
       }
 
       private void listenForMessages() {
@@ -509,7 +626,6 @@ package com.duoshield.app;
                             if (rpId  != null) m.setReplyToId(rpId);
                             if (rpPrv != null) m.setReplyPreview(rpPrv);
                             if (expAt != null) m.setExpiresAt(expAt);
-                            // F4: skip expired messages
                             if (isExpired(m)) continue;
                             messages.add(m);
                             adapter.notifyItemInserted(messages.size() - 1);
@@ -517,7 +633,6 @@ package com.duoshield.app;
                             saveToRoom(m);
                         }
                     } else if (dc.getType() == DocumentChange.Type.MODIFIED) {
-                        // F5: reaction update
                         String id       = dc.getDocument().getString("id");
                         String reaction = dc.getDocument().getString("reaction");
                         for (int i = 0; i < messages.size(); i++) {
@@ -553,7 +668,8 @@ package com.duoshield.app;
                   msgObj.put("token", token); msgObj.put("notification", notification);
                   JSONObject payload = new JSONObject(); payload.put("message", msgObj);
                   InputStream sa = getAssets().open("service-account.json");
-                  GoogleCredentials creds = GoogleCredentials.fromStream(sa).createScoped(Arrays.asList(FCM_SCOPE));
+                  GoogleCredentials creds = GoogleCredentials.fromStream(sa)
+                      .createScoped(Arrays.asList(FCM_SCOPE));
                   creds.refreshIfExpired();
                   URL url = new URL(FCM_ENDPOINT);
                   HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -561,7 +677,9 @@ package com.duoshield.app;
                   conn.setRequestProperty("Authorization", "Bearer " + creds.getAccessToken().getTokenValue());
                   conn.setRequestProperty("Content-Type", "application/json");
                   conn.setDoOutput(true);
-                  try (OutputStream os = conn.getOutputStream()) { os.write(payload.toString().getBytes(StandardCharsets.UTF_8)); }
+                  try (OutputStream os = conn.getOutputStream()) {
+                      os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+                  }
                   Log.d(TAG, "FCM: " + conn.getResponseCode());
               } catch (Exception ex) { Log.w(TAG, "FCM failed", ex); }
           });
