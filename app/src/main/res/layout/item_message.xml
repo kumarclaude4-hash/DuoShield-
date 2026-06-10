@@ -6,14 +6,30 @@
       android:orientation="vertical"
       android:padding="4dp">
 
-      <TextView
-          android:id="@+id/senderLabel"
+      <!-- Sender label + pin indicator row -->
+      <LinearLayout
           android:layout_width="wrap_content"
           android:layout_height="wrap_content"
-          android:textSize="11sp"
-          android:textColor="#888888"
+          android:orientation="horizontal"
+          android:gravity="center_vertical"
           android:layout_marginStart="12dp"
-          android:layout_marginBottom="2dp"/>
+          android:layout_marginBottom="2dp">
+
+          <TextView
+              android:id="@+id/senderLabel"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:textSize="11sp"
+              android:textColor="#888888"/>
+
+          <TextView
+              android:id="@+id/pinIndicator"
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="  📌"
+              android:textSize="11sp"
+              android:visibility="gone"/>
+      </LinearLayout>
 
       <androidx.cardview.widget.CardView
           android:id="@+id/messageBubble"
@@ -32,7 +48,7 @@
               android:padding="10dp"
               android:minWidth="60dp">
 
-              <!-- F3: Reply preview -->
+              <!-- Reply preview -->
               <LinearLayout
                   android:id="@+id/replyPreviewContainer"
                   android:layout_width="match_parent"
@@ -152,7 +168,7 @@
           </LinearLayout>
       </androidx.cardview.widget.CardView>
 
-      <!-- F5: Reaction badge below bubble -->
+      <!-- Reaction badge -->
       <TextView
           android:id="@+id/reactionText"
           android:layout_width="wrap_content"
