@@ -8,7 +8,7 @@ package com.duoshield.app.db;
   import android.content.Context;
   import com.duoshield.app.models.Message;
 
-  @Database(entities = {Message.class}, version = 4)
+  @Database(entities = {Message.class}, version = 5)
   public abstract class AppDatabase extends RoomDatabase {
 
       private static volatile AppDatabase instance;
@@ -19,7 +19,7 @@ package com.duoshield.app.db;
           if (instance == null) {
               instance = Room.databaseBuilder(
                       context.getApplicationContext(), AppDatabase.class, "duoshield_db")
-              .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+              .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
               .build();
           }
           return instance;
@@ -28,10 +28,9 @@ package com.duoshield.app.db;
       static final Migration MIGRATION_1_2 = new Migration(1, 2) {
           @Override public void migrate(SupportSQLiteDatabase db) {
               db.execSQL("DROP TABLE IF EXISTS Message");
-              db.execSQL("CREATE TABLE IF NOT EXISTS messages (" +
-                  "id TEXT NOT NULL PRIMARY KEY, conversationId TEXT, sender TEXT, " +
-                  "text TEXT, timestamp INTEGER NOT NULL DEFAULT 0, " +
-                  "isEncrypted INTEGER NOT NULL DEFAULT 0)");
+              db.execSQL("CREATE TABLE IF NOT EXISTS messages (id TEXT NOT NULL PRIMARY KEY," +
+                  " conversationId TEXT, sender TEXT, text TEXT," +
+                  " timestamp INTEGER NOT NULL DEFAULT 0, isEncrypted INTEGER NOT NULL DEFAULT 0)");
           }
       };
 
@@ -46,6 +45,15 @@ package com.duoshield.app.db;
               db.execSQL("ALTER TABLE messages ADD COLUMN mediaType TEXT");
               db.execSQL("ALTER TABLE messages ADD COLUMN delivered INTEGER NOT NULL DEFAULT 0");
               db.execSQL("ALTER TABLE messages ADD COLUMN seen INTEGER NOT NULL DEFAULT 0");
+          }
+      };
+
+      static final Migration MIGRATION_4_5 = new Migration(4, 5) {
+          @Override public void migrate(SupportSQLiteDatabase db) {
+              db.execSQL("ALTER TABLE messages ADD COLUMN replyToId TEXT");
+              db.execSQL("ALTER TABLE messages ADD COLUMN replyPreview TEXT");
+              db.execSQL("ALTER TABLE messages ADD COLUMN expiresAt INTEGER NOT NULL DEFAULT 0");
+              db.execSQL("ALTER TABLE messages ADD COLUMN reaction TEXT");
           }
       };
   }
