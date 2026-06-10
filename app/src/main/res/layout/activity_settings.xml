@@ -1,238 +1,222 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:orientation="vertical"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent">
+  <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+      xmlns:app="http://schemas.android.com/apk/res-auto"
+      android:orientation="vertical"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent">
 
-    <!-- Toolbar with back navigation -->
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/settingsToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        android:elevation="4dp"
-        app:title="Settings"
-        app:titleTextColor="@android:color/white"
-        app:navigationIcon="?attr/homeAsUpIndicator"/>
+      <androidx.appcompat.widget.Toolbar
+          android:id="@+id/settingsToolbar"
+          android:layout_width="match_parent"
+          android:layout_height="?attr/actionBarSize"
+          android:background="?attr/colorPrimary"
+          android:elevation="4dp"
+          app:title="Settings"
+          app:titleTextColor="@android:color/white"
+          app:navigationIcon="?attr/homeAsUpIndicator"/>
 
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
+      <ScrollView
+          android:layout_width="match_parent"
+          android:layout_height="0dp"
+          android:layout_weight="1">
 
-        <LinearLayout
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+          <LinearLayout
+              android:orientation="vertical"
+              android:padding="16dp"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content">
 
-            <!-- Section: Notifications -->
-            <TextView
-                android:text="Notifications"
-                android:textStyle="bold"
-                android:textSize="12sp"
-                android:textColor="?attr/colorPrimary"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"/>
+              <!-- Section: Appearance -->
+              <TextView
+                  android:text="Appearance"
+                  android:textStyle="bold"
+                  android:textSize="12sp"
+                  android:textColor="?attr/colorPrimary"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="8dp"/>
 
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/switchNotifications"
-                android:text="Enable push notifications"
-                android:checked="true"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp"/>
+              <!-- F2: Dark Mode -->
+              <androidx.appcompat.widget.SwitchCompat
+                  android:id="@+id/switchDarkMode"
+                  android:text="Dark mode"
+                  android:checked="false"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="24dp"/>
 
-            <!-- Divider -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/colorControlHighlight"
-                android:layout_marginBottom="24dp"/>
+              <View android:layout_width="match_parent" android:layout_height="1dp"
+                  android:background="?attr/colorControlHighlight" android:layout_marginBottom="24dp"/>
 
-            <!-- Section: Self-Destruct -->
-            <TextView
-                android:text="Auto-Delete"
-                android:textStyle="bold"
-                android:textSize="12sp"
-                android:textColor="?attr/colorPrimary"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"/>
+              <!-- Section: Notifications -->
+              <TextView
+                  android:text="Notifications"
+                  android:textStyle="bold"
+                  android:textSize="12sp"
+                  android:textColor="?attr/colorPrimary"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="8dp"/>
 
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/switchSelfDestruct"
-                android:text="Auto-delete messages"
-                android:checked="false"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"/>
+              <androidx.appcompat.widget.SwitchCompat
+                  android:id="@+id/switchNotifications"
+                  android:text="Enable push notifications"
+                  android:checked="true"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="24dp"/>
 
-            <!-- Minutes input — shown only when self-destruct is ON -->
-            <LinearLayout
-                android:id="@+id/layoutMinutes"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="4dp"
-                android:visibility="gone">
+              <View android:layout_width="match_parent" android:layout_height="1dp"
+                  android:background="?attr/colorControlHighlight" android:layout_marginBottom="24dp"/>
 
-                <TextView
-                    android:text="Delete after "
-                    android:textSize="14sp"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"/>
+              <!-- Section: Disappearing Messages -->
+              <TextView
+                  android:text="Disappearing Messages"
+                  android:textStyle="bold"
+                  android:textSize="12sp"
+                  android:textColor="?attr/colorPrimary"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="4dp"/>
 
-                <EditText
-                    android:id="@+id/editTtlMinutes"
-                    android:inputType="number"
-                    android:text="60"
-                    android:layout_width="80dp"
-                    android:layout_height="wrap_content"
-                    android:maxLength="5"
-                    android:gravity="center"/>
+              <TextView
+                  android:text="New messages vanish after the selected time (client-side)."
+                  android:textSize="11sp"
+                  android:textColor="?android:attr/textColorSecondary"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="8dp"/>
 
-                <TextView
-                    android:text=" minutes"
-                    android:textSize="14sp"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"/>
+              <!-- F4: Disappearing messages picker button -->
+              <Button
+                  android:id="@+id/btnDisappearing"
+                  android:text="Off"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  style="@style/Widget.AppCompat.Button.Bordered"
+                  android:layout_marginBottom="24dp"/>
 
-            </LinearLayout>
+              <View android:layout_width="match_parent" android:layout_height="1dp"
+                  android:background="?attr/colorControlHighlight" android:layout_marginBottom="24dp"/>
 
-            <TextView
-                android:id="@+id/textTtlHint"
-                android:text="Range: 5 – 10 080 minutes (7 days)"
-                android:textSize="11sp"
-                android:textColor="?android:attr/textColorSecondary"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp"
-                android:visibility="gone"/>
+              <!-- Section: Auto-Delete (server-side WorkManager) -->
+              <TextView
+                  android:text="Auto-Delete"
+                  android:textStyle="bold"
+                  android:textSize="12sp"
+                  android:textColor="?attr/colorPrimary"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="8dp"/>
 
-            <!-- Divider -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/colorControlHighlight"
-                android:layout_marginBottom="24dp"/>
+              <androidx.appcompat.widget.SwitchCompat
+                  android:id="@+id/switchSelfDestruct"
+                  android:text="Auto-delete messages"
+                  android:checked="false"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="12dp"/>
 
-            <!-- Section: Duress PIN -->
-            <LinearLayout
-                android:orientation="vertical"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="#FFF3F3"
-                android:padding="12dp"
-                android:layout_marginBottom="8dp">
+              <LinearLayout
+                  android:id="@+id/layoutMinutes"
+                  android:orientation="horizontal"
+                  android:gravity="center_vertical"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="4dp"
+                  android:visibility="gone">
 
-                <TextView
-                    android:text="Duress PIN"
-                    android:textStyle="bold"
-                    android:textSize="12sp"
-                    android:textColor="#B00020"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="4dp"/>
+                  <TextView android:text="Delete after " android:textSize="14sp"
+                      android:layout_width="wrap_content" android:layout_height="wrap_content"/>
 
-                <TextView
-                    android:text="If entered instead of your join code, this PIN will silently wipe all data and return to the pairing screen."
-                    android:textSize="11sp"
-                    android:textColor="?android:attr/textColorSecondary"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="10dp"/>
+                  <EditText android:id="@+id/editTtlMinutes" android:inputType="number"
+                      android:text="60" android:layout_width="80dp" android:layout_height="wrap_content"
+                      android:maxLength="5" android:gravity="center"/>
 
-                <EditText
-                    android:id="@+id/etDuressPin"
-                    android:inputType="numberPassword"
-                    android:hint="Set duress PIN"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:maxLength="16"
-                    android:layout_marginBottom="8dp"/>
+                  <TextView android:text=" minutes" android:textSize="14sp"
+                      android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+              </LinearLayout>
 
-                <Button
-                    android:id="@+id/btnSetDuressPin"
-                    android:text="Set Duress PIN"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:backgroundTint="#B00020"
-                    android:textColor="@android:color/white"/>
+              <TextView android:id="@+id/textTtlHint"
+                  android:text="Range: 5 – 10 080 minutes (7 days)"
+                  android:textSize="11sp" android:textColor="?android:attr/textColorSecondary"
+                  android:layout_width="match_parent" android:layout_height="wrap_content"
+                  android:layout_marginBottom="24dp" android:visibility="gone"/>
 
-            </LinearLayout>
+              <View android:layout_width="match_parent" android:layout_height="1dp"
+                  android:background="?attr/colorControlHighlight" android:layout_marginBottom="24dp"/>
 
-            <!-- Divider -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/colorControlHighlight"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="24dp"/>
+              <!-- Section: Duress PIN -->
+              <LinearLayout
+                  android:orientation="vertical"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:background="#FFF3F3"
+                  android:padding="12dp"
+                  android:layout_marginBottom="8dp">
 
-            <!-- Section: Biometric Unlock -->
-            <TextView
-                android:text="Security"
-                android:textStyle="bold"
-                android:textSize="12sp"
-                android:textColor="?attr/colorPrimary"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"/>
+                  <TextView android:text="Duress PIN" android:textStyle="bold"
+                      android:textSize="12sp" android:textColor="#B00020"
+                      android:layout_width="match_parent" android:layout_height="wrap_content"
+                      android:layout_marginBottom="4dp"/>
 
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/switchBiometric"
-                android:text="Require biometric to open chat"
-                android:checked="false"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="4dp"/>
+                  <TextView
+                      android:text="If entered instead of your join code, silently wipes all data."
+                      android:textSize="11sp" android:textColor="?android:attr/textColorSecondary"
+                      android:layout_width="match_parent" android:layout_height="wrap_content"
+                      android:layout_marginBottom="10dp"/>
 
-            <TextView
-                android:text="Uses fingerprint, face, or device PIN to unlock the chat screen."
-                android:textSize="11sp"
-                android:textColor="?android:attr/textColorSecondary"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp"/>
+                  <EditText android:id="@+id/etDuressPin" android:inputType="numberPassword"
+                      android:hint="Set duress PIN" android:layout_width="match_parent"
+                      android:layout_height="wrap_content" android:maxLength="16"
+                      android:layout_marginBottom="8dp"/>
 
-            <!-- Divider -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?attr/colorControlHighlight"
-                android:layout_marginBottom="24dp"/>
+                  <Button android:id="@+id/btnSetDuressPin" android:text="Set Duress PIN"
+                      android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:backgroundTint="#B00020" android:textColor="@android:color/white"/>
+              </LinearLayout>
 
-            <!-- Section: Danger Zone -->
-            <TextView
-                android:text="Danger Zone"
-                android:textStyle="bold"
-                android:textSize="12sp"
-                android:textColor="#B00020"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"/>
+              <View android:layout_width="match_parent" android:layout_height="1dp"
+                  android:background="?attr/colorControlHighlight"
+                  android:layout_marginTop="16dp" android:layout_marginBottom="24dp"/>
 
-            <Button
-                android:id="@+id/btnUnpair"
-                android:text="Unpair Device"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:backgroundTint="#B00020"
-                android:textColor="@android:color/white"
-                android:layout_marginBottom="8dp"/>
+              <!-- Section: Security -->
+              <TextView android:text="Security" android:textStyle="bold" android:textSize="12sp"
+                  android:textColor="?attr/colorPrimary" android:layout_width="match_parent"
+                  android:layout_height="wrap_content" android:layout_marginBottom="8dp"/>
 
-            <TextView
-                android:text="Clears all pairing data and local messages. This cannot be undone."
-                android:textSize="11sp"
-                android:textColor="?android:attr/textColorSecondary"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"/>
+              <androidx.appcompat.widget.SwitchCompat
+                  android:id="@+id/switchBiometric"
+                  android:text="Require biometric to open chat"
+                  android:checked="false"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:layout_marginBottom="4dp"/>
 
-        </LinearLayout>
-    </ScrollView>
+              <TextView
+                  android:text="Uses fingerprint, face, or device PIN to unlock the chat screen."
+                  android:textSize="11sp" android:textColor="?android:attr/textColorSecondary"
+                  android:layout_width="match_parent" android:layout_height="wrap_content"
+                  android:layout_marginBottom="24dp"/>
 
-</LinearLayout>
+              <View android:layout_width="match_parent" android:layout_height="1dp"
+                  android:background="?attr/colorControlHighlight" android:layout_marginBottom="24dp"/>
+
+              <!-- Section: Danger Zone -->
+              <TextView android:text="Danger Zone" android:textStyle="bold" android:textSize="12sp"
+                  android:textColor="#B00020" android:layout_width="match_parent"
+                  android:layout_height="wrap_content" android:layout_marginBottom="8dp"/>
+
+              <Button android:id="@+id/btnUnpair" android:text="Unpair Device"
+                  android:layout_width="match_parent" android:layout_height="wrap_content"
+                  android:backgroundTint="#B00020" android:textColor="@android:color/white"
+                  android:layout_marginBottom="8dp"/>
+
+              <TextView
+                  android:text="Clears all pairing data and local messages. Cannot be undone."
+                  android:textSize="11sp" android:textColor="?android:attr/textColorSecondary"
+                  android:layout_width="match_parent" android:layout_height="wrap_content"/>
+
+          </LinearLayout>
+      </ScrollView>
+  </LinearLayout>
