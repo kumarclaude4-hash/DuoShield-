@@ -1,26 +1,133 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="8dp">
+  <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+      xmlns:app="http://schemas.android.com/apk/res-auto"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="vertical"
+      android:padding="4dp">
 
-    <!-- Shown for text messages -->
-    <TextView
-        android:id="@+id/messageText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textSize="16sp"
-        android:textColor="@android:color/black"
-        android:visibility="gone"/>
+      <TextView
+          android:id="@+id/senderLabel"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:textSize="11sp"
+          android:textColor="#888888"
+          android:layout_marginStart="12dp"
+          android:layout_marginBottom="2dp"/>
 
-    <!-- Shown for image/media messages -->
-    <ImageView
-        android:id="@+id/messageImage"
-        android:layout_width="match_parent"
-        android:layout_height="200dp"
-        android:scaleType="centerCrop"
-        android:contentDescription="Shared image"
-        android:visibility="gone"/>
+      <androidx.cardview.widget.CardView
+          android:id="@+id/messageBubble"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginStart="8dp"
+          android:layout_marginEnd="8dp"
+          android:layout_marginBottom="6dp"
+          app:cardCornerRadius="12dp"
+          app:cardElevation="2dp">
 
-</LinearLayout>
+          <LinearLayout
+              android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:orientation="vertical"
+              android:padding="10dp"
+              android:minWidth="60dp">
+
+              <TextView
+                  android:id="@+id/messageText"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:textSize="15sp"
+                  android:textColor="@android:color/black"
+                  android:visibility="gone"/>
+
+              <ImageView
+                  android:id="@+id/messageImage"
+                  android:layout_width="220dp"
+                  android:layout_height="160dp"
+                  android:scaleType="centerCrop"
+                  android:contentDescription="Shared image"
+                  android:visibility="gone"/>
+
+              <FrameLayout
+                  android:id="@+id/videoContainer"
+                  android:layout_width="220dp"
+                  android:layout_height="160dp"
+                  android:visibility="gone">
+
+                  <ImageView
+                      android:id="@+id/videoThumbnail"
+                      android:layout_width="match_parent"
+                      android:layout_height="match_parent"
+                      android:scaleType="centerCrop"
+                      android:background="#FF222222"
+                      android:contentDescription="Video"/>
+
+                  <ImageView
+                      android:id="@+id/videoPlayBtn"
+                      android:layout_width="56dp"
+                      android:layout_height="56dp"
+                      android:layout_gravity="center"
+                      android:src="@drawable/ic_play_video"
+                      android:contentDescription="Play"
+                      android:alpha="0.9"/>
+              </FrameLayout>
+
+              <LinearLayout
+                  android:id="@+id/contactCardContainer"
+                  android:layout_width="220dp"
+                  android:layout_height="wrap_content"
+                  android:orientation="horizontal"
+                  android:padding="4dp"
+                  android:visibility="gone">
+
+                  <ImageView
+                      android:layout_width="40dp"
+                      android:layout_height="40dp"
+                      android:src="@android:drawable/ic_menu_my_calendar"
+                      android:layout_marginEnd="10dp"
+                      android:contentDescription="Contact"/>
+
+                  <LinearLayout
+                      android:layout_width="0dp"
+                      android:layout_height="wrap_content"
+                      android:layout_weight="1"
+                      android:orientation="vertical">
+
+                      <TextView
+                          android:id="@+id/cardName"
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:textStyle="bold"
+                          android:textSize="14sp"/>
+
+                      <TextView
+                          android:id="@+id/cardUid"
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:textSize="11sp"
+                          android:textColor="#555555"/>
+
+                      <Button
+                          android:id="@+id/cardCopyBtn"
+                          android:layout_width="wrap_content"
+                          android:layout_height="32dp"
+                          android:text="Copy ID"
+                          android:textSize="11sp"
+                          style="@style/Widget.AppCompat.Button.Borderless"
+                          android:paddingStart="0dp"
+                          android:paddingEnd="0dp"/>
+                  </LinearLayout>
+              </LinearLayout>
+
+              <ImageView
+                  android:id="@+id/tickIcon"
+                  android:layout_width="18dp"
+                  android:layout_height="18dp"
+                  android:layout_gravity="end"
+                  android:layout_marginTop="4dp"
+                  android:visibility="gone"
+                  android:contentDescription="Status"/>
+
+          </LinearLayout>
+      </androidx.cardview.widget.CardView>
+  </LinearLayout>
