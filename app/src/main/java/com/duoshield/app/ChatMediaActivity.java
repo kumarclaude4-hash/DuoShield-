@@ -411,7 +411,7 @@ package com.duoshield.app;
 
       private SecretKey resolveKey() throws Exception {
           SecretKey k = CryptoInitializer.getSharedKey(this);
-          if (k == null) k = KeyManager.getOrCreateKey();
+          if (k == null) k = KeyManager.getKey();
           return k;
       }
 
