@@ -1,63 +1,107 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:orientation="vertical"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent">
+  <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+      xmlns:app="http://schemas.android.com/apk/res-auto"
+      android:orientation="vertical"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent">
 
-    <!-- Toolbar — hosts the Settings menu icon -->
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/chatToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        android:elevation="4dp"
-        app:titleTextColor="@android:color/white"/>
+      <androidx.appcompat.widget.Toolbar
+          android:id="@+id/chatToolbar"
+          android:layout_width="match_parent"
+          android:layout_height="?attr/actionBarSize"
+          android:background="?attr/colorPrimary"
+          android:elevation="4dp"
+          app:titleTextColor="@android:color/white"/>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/messageRecycler"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"/>
+      <androidx.recyclerview.widget.RecyclerView
+          android:id="@+id/messageRecycler"
+          android:layout_width="match_parent"
+          android:layout_height="0dp"
+          android:layout_weight="1"/>
 
-    <!-- Upload progress bar — visible only during transfer -->
-    <ProgressBar
-        android:id="@+id/uploadProgress"
-        style="@style/Widget.AppCompat.ProgressBar.Horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:max="100"
-        android:progress="0"
-        android:visibility="gone"/>
+      <!-- F1: Typing indicator -->
+      <TextView
+          android:id="@+id/typingIndicator"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:text="Partner is typing…"
+          android:textSize="12sp"
+          android:textStyle="italic"
+          android:textColor="#888888"
+          android:paddingStart="16dp"
+          android:paddingEnd="16dp"
+          android:paddingTop="4dp"
+          android:visibility="gone"/>
 
-    <EditText
-        android:id="@+id/messageInput"
-        android:hint="Type a message..."
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:inputType="text"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="8dp"/>
+      <ProgressBar
+          android:id="@+id/uploadProgress"
+          style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:max="100"
+          android:progress="0"
+          android:visibility="gone"/>
 
-    <Button
-        android:id="@+id/sendButton"
-        android:text="Send Message"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="4dp"/>
+      <!-- F3: Reply preview bar (shown when user long-presses a message to reply) -->
+      <LinearLayout
+          android:id="@+id/replyPreviewBar"
+          android:orientation="horizontal"
+          android:gravity="center_vertical"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:background="#FFF3E0"
+          android:paddingStart="12dp"
+          android:paddingEnd="4dp"
+          android:paddingTop="4dp"
+          android:paddingBottom="4dp"
+          android:visibility="gone">
 
-    <Button
-        android:id="@+id/uploadButton"
-        android:text="Upload Image"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="8dp"/>
+          <TextView
+              android:id="@+id/replyPreviewBarText"
+              android:layout_width="0dp"
+              android:layout_height="wrap_content"
+              android:layout_weight="1"
+              android:textSize="12sp"
+              android:textColor="#555555"
+              android:maxLines="1"
+              android:ellipsize="end"/>
 
-</LinearLayout>
+          <ImageView
+              android:id="@+id/cancelReplyBtn"
+              android:layout_width="40dp"
+              android:layout_height="40dp"
+              android:src="@android:drawable/ic_menu_close_clear_cancel"
+              android:padding="8dp"
+              android:contentDescription="Cancel reply"/>
+      </LinearLayout>
+
+      <EditText
+          android:id="@+id/messageInput"
+          android:hint="Type a message..."
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:inputType="text"
+          android:layout_marginStart="16dp"
+          android:layout_marginEnd="16dp"
+          android:layout_marginTop="8dp"/>
+
+      <Button
+          android:id="@+id/sendButton"
+          android:text="Send Message"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginStart="16dp"
+          android:layout_marginEnd="16dp"
+          android:layout_marginTop="4dp"/>
+
+      <Button
+          android:id="@+id/uploadButton"
+          android:text="Share Media"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginStart="16dp"
+          android:layout_marginEnd="16dp"
+          android:layout_marginTop="4dp"
+          android:layout_marginBottom="8dp"/>
+
+  </LinearLayout>
