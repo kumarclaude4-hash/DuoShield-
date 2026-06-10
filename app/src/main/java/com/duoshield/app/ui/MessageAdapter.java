@@ -20,22 +20,32 @@ package com.duoshield.app.ui;
   import com.bumptech.glide.Glide;
   import com.duoshield.app.R;
   import com.duoshield.app.models.Message;
+  import java.util.HashSet;
   import java.util.List;
+  import java.util.Set;
 
   public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageViewHolder> {
 
-      public interface OnVoicePlayListener      { void onVoicePlay(Message m); }
+      public interface OnVoicePlayListener       { void onVoicePlay(Message m); }
       public interface OnMessageLongPressListener { void onLongPress(Message m, View anchor); }
 
       private final List<Message>               messages;
       private final String                      myUid;
       private final OnVoicePlayListener         voiceListener;
       private final OnMessageLongPressListener  longPressListener;
+      private final Set<String>                 pinnedIds = new HashSet<>();
 
       public MessageAdapter(List<Message> messages, String myUid,
                             OnVoicePlayListener vl, OnMessageLongPressListener ll) {
           this.messages = messages; this.myUid = myUid;
           this.voiceListener = vl; this.longPressListener = ll;
+      }
+
+      /** Called from ChatMediaActivity whenever the pinned set changes. */
+      public void updatePinnedIds(Set<String> ids) {
+          pinnedIds.clear();
+          if (ids != null) pinnedIds.addAll(ids);
+          notifyDataSetChanged();
       }
 
       @NonNull @Override
@@ -50,7 +60,6 @@ package com.duoshield.app.ui;
           boolean mine = myUid != null && myUid.equals(msg.getSender());
           String  type = msg.getMediaType();
 
-          // Hide all content blocks
           h.textView.setVisibility(View.GONE);
           h.imageView.setVisibility(View.GONE);
           h.videoContainer.setVisibility(View.GONE);
@@ -60,14 +69,17 @@ package com.duoshield.app.ui;
 
           h.senderLabel.setText(mine ? "You" : "Partner");
 
-          // Bubble alignment
+          // Pin indicator
+          h.pinIndicator.setVisibility(pinnedIds.contains(msg.getId()) ? View.VISIBLE : View.GONE);
+
+          // Bubble side
           LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) h.bubbleCard.getLayoutParams();
           lp.gravity = mine ? android.view.Gravity.END : android.view.Gravity.START;
           h.bubbleCard.setCardBackgroundColor(ContextCompat.getColor(h.itemView.getContext(),
               mine ? R.color.bubble_mine : R.color.bubble_theirs));
           h.bubbleCard.setLayoutParams(lp);
 
-          // F3: Reply preview
+          // Reply preview
           String rp = msg.getReplyPreview();
           if (rp != null && !rp.isEmpty()) {
               h.replyPreviewContainer.setVisibility(View.VISIBLE);
@@ -92,8 +104,12 @@ package com.duoshield.app.ui;
               String uid = p.length > 1 ? p[1] : "";
               h.cardUid.setText(uid.isEmpty() ? "" : "ID: " + uid);
               h.cardCopyBtn.setOnClickListener(v -> {
-                  ClipboardManager cm = (ClipboardManager) v.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-                  if (cm != null) { cm.setPrimaryClip(ClipData.newPlainText("uid", uid)); Toast.makeText(v.getContext(), "UID copied", Toast.LENGTH_SHORT).show(); }
+                  ClipboardManager cm = (ClipboardManager) v.getContext()
+                      .getSystemService(Context.CLIPBOARD_SERVICE);
+                  if (cm != null) {
+                      cm.setPrimaryClip(ClipData.newPlainText("uid", uid));
+                      Toast.makeText(v.getContext(), "UID copied", Toast.LENGTH_SHORT).show();
+                  }
               });
           } else if (msg.getMediaUrl() != null && !msg.getMediaUrl().isEmpty()) {
               h.imageView.setVisibility(View.VISIBLE);
@@ -104,7 +120,7 @@ package com.duoshield.app.ui;
               h.textView.setText(msg.getText());
           }
 
-          // F2: Ticks
+          // Ticks
           if (mine) {
               h.tickIcon.setVisibility(View.VISIBLE);
               if      (msg.isSeen())      h.tickIcon.setImageResource(R.drawable.ic_tick_double_blue);
@@ -114,7 +130,7 @@ package com.duoshield.app.ui;
               h.tickIcon.setVisibility(View.GONE);
           }
 
-          // F5: Reaction
+          // Reaction
           String reaction = msg.getReaction();
           if (reaction != null && !reaction.isEmpty()) {
               h.reactionText.setVisibility(View.VISIBLE);
@@ -130,7 +146,7 @@ package com.duoshield.app.ui;
       @Override public int getItemCount() { return messages.size(); }
 
       static class MessageViewHolder extends RecyclerView.ViewHolder {
-          TextView  senderLabel, textView, cardName, cardUid, replyPreviewText, reactionText;
+          TextView  senderLabel, textView, cardName, cardUid, replyPreviewText, reactionText, pinIndicator;
           ImageView imageView, videoThumbnail, videoPlayBtn, tickIcon;
           CardView  bubbleCard;
           View      videoContainer, contactCardContainer, replyPreviewContainer;
@@ -138,21 +154,22 @@ package com.duoshield.app.ui;
 
           MessageViewHolder(View v) {
               super(v);
-              senderLabel            = v.findViewById(R.id.senderLabel);
-              bubbleCard             = v.findViewById(R.id.messageBubble);
-              textView               = v.findViewById(R.id.messageText);
-              imageView              = v.findViewById(R.id.messageImage);
-              videoContainer         = v.findViewById(R.id.videoContainer);
-              videoThumbnail         = v.findViewById(R.id.videoThumbnail);
-              videoPlayBtn           = v.findViewById(R.id.videoPlayBtn);
-              contactCardContainer   = v.findViewById(R.id.contactCardContainer);
-              cardName               = v.findViewById(R.id.cardName);
-              cardUid                = v.findViewById(R.id.cardUid);
-              cardCopyBtn            = v.findViewById(R.id.cardCopyBtn);
-              tickIcon               = v.findViewById(R.id.tickIcon);
-              replyPreviewContainer  = v.findViewById(R.id.replyPreviewContainer);
-              replyPreviewText       = v.findViewById(R.id.replyPreviewText);
-              reactionText           = v.findViewById(R.id.reactionText);
+              senderLabel           = v.findViewById(R.id.senderLabel);
+              pinIndicator          = v.findViewById(R.id.pinIndicator);
+              bubbleCard            = v.findViewById(R.id.messageBubble);
+              textView              = v.findViewById(R.id.messageText);
+              imageView             = v.findViewById(R.id.messageImage);
+              videoContainer        = v.findViewById(R.id.videoContainer);
+              videoThumbnail        = v.findViewById(R.id.videoThumbnail);
+              videoPlayBtn          = v.findViewById(R.id.videoPlayBtn);
+              contactCardContainer  = v.findViewById(R.id.contactCardContainer);
+              cardName              = v.findViewById(R.id.cardName);
+              cardUid               = v.findViewById(R.id.cardUid);
+              cardCopyBtn           = v.findViewById(R.id.cardCopyBtn);
+              tickIcon              = v.findViewById(R.id.tickIcon);
+              replyPreviewContainer = v.findViewById(R.id.replyPreviewContainer);
+              replyPreviewText      = v.findViewById(R.id.replyPreviewText);
+              reactionText          = v.findViewById(R.id.reactionText);
           }
       }
   }
