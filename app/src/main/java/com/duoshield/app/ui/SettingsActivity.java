@@ -3,61 +3,31 @@ package com.duoshield.app.ui;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
-import com.duoshield.app.BaseActivity;
-import androidx.appcompat.app.AppCompatDelegate;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.appcompat.widget.Toolbar;
-import androidx.work.ExistingPeriodicWorkPolicy;
-import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
-
+import com.duoshield.app.BaseActivity;
 import com.duoshield.app.R;
 import com.duoshield.app.db.AppDatabase;
-import com.duoshield.app.db.SelfDestructWorker;
 import com.duoshield.app.security.BiometricHelper;
 import com.duoshield.app.security.DuressManager;
 import com.duoshield.app.util.PinManager;
-
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 public class SettingsActivity extends BaseActivity {
 
-    private static final String TAG             = "SettingsActivity";
-    private static final String WORK_TAG        = "self_destruct_work";
-    private static final long   DEFAULT_TTL_MIN = 60L;
-    private static final long   MIN_TTL         = 5L;
-    private static final long   MAX_TTL         = 10_080L;
-
-    private static final long[] DISAPPEAR_MS    = {0, 60_000L, 300_000L, 3_600_000L, 86_400_000L};
-    private static final String[] DISAPPEAR_LBL = {"Off", "1 minute", "5 minutes", "1 hour", "1 day"};
+    private static final String WORK_TAG = "self_destruct_work";
 
     private SharedPreferences prefs;
-
-    // These views exist in the layout
-    private SwitchCompat switchBiometric;
-    private EditText     etDuressPin;
-    private EditText     etNewPin, etConfirmPin;
-    private TextView     tvPinStatus;
-
-    // These views may be null if not present in the layout — guard all access
-    private SwitchCompat switchNotifications;
-    private SwitchCompat switchSelfDestruct;
-    private SwitchCompat switchDarkMode;
-    private LinearLayout layoutMinutes;
-    private EditText     editTtlMinutes;
-    private TextView     textTtlHint;
-    private Button       btnDisappearing;
-    private Button       btnUnpair;
-
+    private SwitchCompat      switchBiometric;
+    private EditText          etDuressPin, etNewPin, etConfirmPin;
+    private TextView          tvPinStatus;
     private final ExecutorService bgExecutor = Executors.newSingleThreadExecutor();
 
     @Override
@@ -65,7 +35,7 @@ public class SettingsActivity extends BaseActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
 
-        // Layout uses id="toolbar", not "settingsToolbar"
+        // Layout uses id="toolbar", NOT "settingsToolbar"
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
@@ -73,138 +43,68 @@ public class SettingsActivity extends BaseActivity {
 
         prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
 
-        // ── Existing IDs in layout ────────────────────────────────────────────
-        switchBiometric     = findViewById(R.id.switchBiometric);
-        etDuressPin         = findViewById(R.id.etDuressPin);
-        etNewPin            = findViewById(R.id.etNewPin);
-        etConfirmPin        = findViewById(R.id.etConfirmPin);
-        tvPinStatus         = findViewById(R.id.tvPinStatus);
-
-        // ── Optional IDs (may return null) ────────────────────────────────────
-        switchNotifications = findViewById(R.id.switchNotifications);
-        switchSelfDestruct  = findViewById(R.id.switchSelfDestruct);
-        switchDarkMode      = findViewById(R.id.switchDarkMode);
-        layoutMinutes       = findViewById(R.id.layoutMinutes);
-        editTtlMinutes      = findViewById(R.id.editTtlMinutes);
-        textTtlHint         = findViewById(R.id.textTtlHint);
-        btnDisappearing     = findViewById(R.id.btnDisappearing);
-        btnUnpair           = findViewById(R.id.btnUnpair);
+        switchBiometric = findViewById(R.id.switchBiometric);
+        etDuressPin     = findViewById(R.id.etDuressPin);
+        etNewPin        = findViewById(R.id.etNewPin);
+        etConfirmPin    = findViewById(R.id.etConfirmPin);
+        tvPinStatus     = findViewById(R.id.tvPinStatus);
 
         Button btnSetPin       = findViewById(R.id.btnSetPin);
         Button btnClearPin     = findViewById(R.id.btnClearPin);
         Button btnSetDuressPin = findViewById(R.id.btnSetDuressPin);
 
-        // ── Restore saved state ───────────────────────────────────────────────
-        if (switchNotifications != null)
-            switchNotifications.setChecked(prefs.getBoolean("notifications_enabled", true));
-
-        boolean destructOn = prefs.getBoolean("self_destruct_enabled", false);
-        if (switchSelfDestruct != null) {
-            switchSelfDestruct.setChecked(destructOn);
-            setMinutesVisible(destructOn);
-        }
-        if (editTtlMinutes != null)
-            editTtlMinutes.setText(String.valueOf(prefs.getLong("self_destruct_minutes", DEFAULT_TTL_MIN)));
-
         if (switchBiometric != null)
             switchBiometric.setChecked(prefs.getBoolean("biometric_enabled", false));
-        if (switchDarkMode != null)
-            switchDarkMode.setChecked(prefs.getBoolean("dark_mode", false));
-
-        updateDisappearLabel();
         refreshPinStatus();
 
-        // ── App PIN ───────────────────────────────────────────────────────────
-        if (btnSetPin   != null) btnSetPin.setOnClickListener(v -> saveAppPin());
-        if (btnClearPin != null) btnClearPin.setOnClickListener(v -> confirmClearPin());
-
-        // ── Duress PIN ────────────────────────────────────────────────────────
+        if (btnSetPin       != null) btnSetPin.setOnClickListener(v -> saveAppPin());
+        if (btnClearPin     != null) btnClearPin.setOnClickListener(v -> confirmClearPin());
         if (btnSetDuressPin != null) btnSetDuressPin.setOnClickListener(v -> saveDuressPin());
 
-        // ── Biometric ─────────────────────────────────────────────────────────
         if (switchBiometric != null) {
             switchBiometric.setOnCheckedChangeListener((b, checked) -> {
                 if (checked && !PinManager.hasPinSet(this)) {
                     switchBiometric.setChecked(false);
-                    Toast.makeText(this,
-                        "Set an app PIN first before enabling biometric lock.",
-                        Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Set an app PIN first.", Toast.LENGTH_LONG).show();
                     return;
                 }
                 if (checked && !BiometricHelper.isAvailable(this)) {
                     switchBiometric.setChecked(false);
-                    Toast.makeText(this,
-                        "No biometric enrolled on this device.",
-                        Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "No biometric enrolled on this device.", Toast.LENGTH_LONG).show();
                     return;
                 }
                 prefs.edit().putBoolean("biometric_enabled", checked).apply();
             });
         }
-
-        // ── Optional switches ─────────────────────────────────────────────────
-        if (switchNotifications != null)
-            switchNotifications.setOnCheckedChangeListener((b, c) ->
-                prefs.edit().putBoolean("notifications_enabled", c).apply());
-
-        if (switchDarkMode != null)
-            switchDarkMode.setOnCheckedChangeListener((b, c) -> {
-                prefs.edit().putBoolean("dark_mode", c).apply();
-                AppCompatDelegate.setDefaultNightMode(
-                    c ? AppCompatDelegate.MODE_NIGHT_YES : AppCompatDelegate.MODE_NIGHT_NO);
-            });
-
-        if (switchSelfDestruct != null)
-            switchSelfDestruct.setOnCheckedChangeListener((b, c) -> {
-                setMinutesVisible(c);
-                prefs.edit().putBoolean("self_destruct_enabled", c).apply();
-                if (c) saveTtlAndSchedule(); else cancelSelfDestruct();
-            });
-
-        if (editTtlMinutes != null)
-            editTtlMinutes.setOnFocusChangeListener((v, f) -> {
-                if (!f && switchSelfDestruct != null && switchSelfDestruct.isChecked())
-                    saveTtlAndSchedule();
-            });
-
-        if (btnDisappearing != null) btnDisappearing.setOnClickListener(v -> showDisappearingPicker());
-        if (btnUnpair       != null) btnUnpair.setOnClickListener(v -> confirmUnpair());
     }
-
-    // ── App PIN logic ─────────────────────────────────────────────────────────
 
     private void saveAppPin() {
         if (etNewPin == null || etConfirmPin == null) return;
-        String pin     = etNewPin.getText().toString().trim();
+        String pin = etNewPin.getText().toString().trim();
         String confirm = etConfirmPin.getText().toString().trim();
         if (pin.length() < 4 || pin.length() > 6) {
-            Toast.makeText(this, "PIN must be 4–6 digits.", Toast.LENGTH_SHORT).show();
-            return;
+            Toast.makeText(this, "PIN must be 4-6 digits.", Toast.LENGTH_SHORT).show(); return;
         }
         if (!pin.equals(confirm)) {
-            Toast.makeText(this, "PINs don't match. Try again.", Toast.LENGTH_SHORT).show();
-            etConfirmPin.setText("");
-            return;
+            Toast.makeText(this, "PINs don't match.", Toast.LENGTH_SHORT).show();
+            etConfirmPin.setText(""); return;
         }
         if (DuressManager.isDuressPin(this, pin)) {
-            Toast.makeText(this, "App PIN cannot be the same as your duress PIN.", Toast.LENGTH_LONG).show();
-            return;
+            Toast.makeText(this, "App PIN cannot match duress PIN.", Toast.LENGTH_LONG).show(); return;
         }
         PinManager.setPin(this, pin);
-        etNewPin.setText("");
-        etConfirmPin.setText("");
+        etNewPin.setText(""); etConfirmPin.setText("");
         refreshPinStatus();
-        Toast.makeText(this, "App PIN set successfully.", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "App PIN set.", Toast.LENGTH_SHORT).show();
     }
 
     private void confirmClearPin() {
         if (!PinManager.hasPinSet(this)) {
-            Toast.makeText(this, "No app PIN is set.", Toast.LENGTH_SHORT).show();
-            return;
+            Toast.makeText(this, "No app PIN set.", Toast.LENGTH_SHORT).show(); return;
         }
         new AlertDialog.Builder(this)
             .setTitle("Clear App PIN")
-            .setMessage("This will remove your app PIN. Continue?")
+            .setMessage("Remove PIN? Lock screen will be disabled.")
             .setPositiveButton("Clear", (d, w) -> {
                 PinManager.clearPin(this);
                 prefs.edit().putBoolean("biometric_enabled", false).apply();
@@ -212,99 +112,28 @@ public class SettingsActivity extends BaseActivity {
                 refreshPinStatus();
                 Toast.makeText(this, "App PIN cleared.", Toast.LENGTH_SHORT).show();
             })
-            .setNegativeButton("Cancel", null)
-            .show();
+            .setNegativeButton("Cancel", null).show();
     }
 
     private void refreshPinStatus() {
         if (tvPinStatus == null) return;
-        tvPinStatus.setText(PinManager.hasPinSet(this)
-            ? "✓  App PIN is set"
-            : "No PIN set — lock screen is disabled");
+        tvPinStatus.setText(PinManager.hasPinSet(this) ? "PIN is set" : "No PIN set");
         tvPinStatus.setTextColor(getResources().getColor(
-            PinManager.hasPinSet(this) ? R.color.online_green : R.color.text_hint, null));
+            PinManager.hasPinSet(this) ? R.color.ds_online : R.color.text_hint, null));
     }
-
-    // ── Duress PIN logic ──────────────────────────────────────────────────────
 
     private void saveDuressPin() {
         if (etDuressPin == null) return;
         String pin = etDuressPin.getText().toString().trim();
         if (pin.length() < 4 || pin.length() > 6) {
-            Toast.makeText(this, "Duress PIN must be 4–6 digits.", Toast.LENGTH_SHORT).show();
-            return;
+            Toast.makeText(this, "Duress PIN must be 4-6 digits.", Toast.LENGTH_SHORT).show(); return;
         }
         if (PinManager.verifyPin(this, pin)) {
-            Toast.makeText(this, "Duress PIN cannot match your app PIN.", Toast.LENGTH_LONG).show();
-            return;
+            Toast.makeText(this, "Duress PIN cannot match app PIN.", Toast.LENGTH_LONG).show(); return;
         }
         DuressManager.setDuressPin(this, pin);
         etDuressPin.setText("");
-        Toast.makeText(this, "Duress PIN set. Keep it secret.", Toast.LENGTH_SHORT).show();
-    }
-
-    // ── Disappearing messages ─────────────────────────────────────────────────
-
-    private void showDisappearingPicker() {
-        new AlertDialog.Builder(this)
-            .setTitle("Disappearing messages")
-            .setItems(DISAPPEAR_LBL, (d, which) -> {
-                prefs.edit().putLong("disappear_ms", DISAPPEAR_MS[which]).apply();
-                updateDisappearLabel();
-                Toast.makeText(this,
-                    which == 0 ? "Disappearing messages off" : "Set to " + DISAPPEAR_LBL[which],
-                    Toast.LENGTH_SHORT).show();
-            })
-            .show();
-    }
-
-    private void updateDisappearLabel() {
-        if (btnDisappearing == null) return;
-        long ttl = prefs.getLong("disappear_ms", 0);
-        String label = "Off";
-        for (int i = 0; i < DISAPPEAR_MS.length; i++) {
-            if (DISAPPEAR_MS[i] == ttl) { label = DISAPPEAR_LBL[i]; break; }
-        }
-        btnDisappearing.setText(label);
-    }
-
-    // ── Self-destruct / auto-delete ───────────────────────────────────────────
-
-    private void setMinutesVisible(boolean visible) {
-        int vis = visible ? View.VISIBLE : View.GONE;
-        if (layoutMinutes != null) layoutMinutes.setVisibility(vis);
-        if (textTtlHint   != null) textTtlHint.setVisibility(vis);
-    }
-
-    private void saveTtlAndSchedule() {
-        if (editTtlMinutes == null) return;
-        String raw = editTtlMinutes.getText().toString().trim();
-        long minutes;
-        try { minutes = Long.parseLong(raw); } catch (NumberFormatException e) { minutes = DEFAULT_TTL_MIN; }
-        minutes = Math.max(MIN_TTL, Math.min(MAX_TTL, minutes));
-        editTtlMinutes.setText(String.valueOf(minutes));
-        prefs.edit().putLong("self_destruct_minutes", minutes).apply();
-        PeriodicWorkRequest workRequest =
-            new PeriodicWorkRequest.Builder(SelfDestructWorker.class, 15, TimeUnit.MINUTES)
-                .addTag(WORK_TAG).build();
-        WorkManager.getInstance(getApplicationContext())
-                   .enqueueUniquePeriodicWork(WORK_TAG, ExistingPeriodicWorkPolicy.REPLACE, workRequest);
-        Toast.makeText(this, "Auto-delete set to " + minutes + " minutes", Toast.LENGTH_SHORT).show();
-    }
-
-    private void cancelSelfDestruct() {
-        WorkManager.getInstance(getApplicationContext()).cancelAllWorkByTag(WORK_TAG);
-        Toast.makeText(this, "Auto-delete disabled", Toast.LENGTH_SHORT).show();
-    }
-
-    // ── Unpair ────────────────────────────────────────────────────────────────
-
-    private void confirmUnpair() {
-        new AlertDialog.Builder(this)
-            .setTitle("Unpair Device")
-            .setMessage("This will remove all pairing data and delete all local messages. This cannot be undone.")
-            .setPositiveButton("Unpair", (dialog, which) -> unpairDevice())
-            .setNegativeButton("Cancel", null).show();
+        Toast.makeText(this, "Duress PIN set.", Toast.LENGTH_SHORT).show();
     }
 
     private void unpairDevice() {
@@ -317,7 +146,7 @@ public class SettingsActivity extends BaseActivity {
             } catch (Exception ignored) {}
             runOnUiThread(() -> {
                 prefs.edit().clear().apply();
-                Intent intent = new Intent(this, com.duoshield.app.PairingActivity.class);
+                Intent intent = new Intent(this, PairingActivity.class);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                 startActivity(intent);
                 finish();
@@ -325,9 +154,6 @@ public class SettingsActivity extends BaseActivity {
         });
     }
 
-    @Override
-    public boolean onSupportNavigateUp() { finish(); return true; }
-
-    @Override
-    protected void onDestroy() { super.onDestroy(); bgExecutor.shutdown(); }
+    @Override public boolean onSupportNavigateUp() { finish(); return true; }
+    @Override protected void onDestroy() { super.onDestroy(); bgExecutor.shutdown(); }
 }

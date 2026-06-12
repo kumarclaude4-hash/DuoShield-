@@ -2,14 +2,11 @@ package com.duoshield.app;
 
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.view.View;
-import android.widget.EditText;
+import android.widget.SearchView;
 import android.widget.TextView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import com.duoshield.app.db.AppDatabase;
 import com.duoshield.app.models.Message;
 import com.duoshield.app.util.SearchHelper;
 import java.util.ArrayList;
@@ -17,11 +14,11 @@ import java.util.List;
 
 public class MessageSearchActivity extends BaseActivity {
 
-    private EditText         etQuery;
-    private RecyclerView     recyclerView;
-    private TextView         tvEmpty;
+    private SearchView           svSearch;
+    private RecyclerView         recyclerView;
+    private TextView             tvEmpty;
     private SearchResultsAdapter adapter;
-    private String           conversationId;
+    private String               conversationId;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,40 +31,46 @@ public class MessageSearchActivity extends BaseActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
             getSupportActionBar().setTitle("Search Messages");
         }
-        toolbar.setNavigationOnClickListener(v -> finish());
+        if (toolbar != null) toolbar.setNavigationOnClickListener(v -> finish());
 
         SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
         conversationId = prefs.getString("conversation_id", null);
 
-        etQuery     = findViewById(R.id.etSearchQuery);
-        recyclerView = findViewById(R.id.searchRecycler);
-        tvEmpty     = findViewById(R.id.tvEmpty);
+        svSearch     = findViewById(R.id.sv_search);
+        recyclerView = findViewById(R.id.rv_results);
+        tvEmpty      = findViewById(R.id.tv_empty);
 
         adapter = new SearchResultsAdapter(new ArrayList<>());
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setAdapter(adapter);
+        if (recyclerView != null) {
+            recyclerView.setLayoutManager(new LinearLayoutManager(this));
+            recyclerView.setAdapter(adapter);
+        }
 
-        etQuery.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
-            @Override public void afterTextChanged(Editable s) {}
-            @Override public void onTextChanged(CharSequence s, int st, int b, int c) {
-                String q = s.toString().trim();
-                if (q.length() >= 2) runSearch(q);
-                else {
-                    adapter.setMessages(new ArrayList<>());
-                    tvEmpty.setVisibility(View.GONE);
+        if (svSearch != null) {
+            svSearch.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+                @Override public boolean onQueryTextSubmit(String q) {
+                    if (q.length() >= 2) runSearch(q);
+                    return true;
                 }
-            }
-        });
+                @Override public boolean onQueryTextChange(String q) {
+                    if (q.length() >= 2) runSearch(q);
+                    else {
+                        adapter.setMessages(new ArrayList<>());
+                        if (tvEmpty != null) tvEmpty.setVisibility(View.GONE);
+                    }
+                    return true;
+                }
+            });
+        }
     }
 
     private void runSearch(String query) {
         if (conversationId == null) return;
-        SearchHelper.runSearch(this, conversationId, query, results -> {
-            runOnUiThread(() -> {
-                adapter.setMessages(results);
-                tvEmpty.setVisibility(results.isEmpty() ? View.VISIBLE : View.GONE);
-            });
-        });
+        SearchHelper.runSearch(this, conversationId, query, results -> runOnUiThread(() -> {
+            adapter.setMessages(results);
+            if (tvEmpty != null) tvEmpty.setVisibility(results.isEmpty() ? View.VISIBLE : View.GONE);
+        }));
     }
+
+    @Override public boolean onSupportNavigateUp() { finish(); return true; }
 }

@@ -152,7 +152,7 @@ package com.duoshield.app;
 
       private void setupChat() {
           setContentView(R.layout.activity_chat_media);
-          Toolbar toolbar = findViewById(R.id.chatToolbar);
+          Toolbar toolbar = findViewById(R.id.toolbar);
           setSupportActionBar(toolbar);
           if (getSupportActionBar() != null) getSupportActionBar().setTitle("DuoShield");
 
@@ -166,19 +166,19 @@ package com.duoshield.app;
               finish(); return;
           }
 
-          messageInput        = findViewById(R.id.messageInput);
-          sendButton          = findViewById(R.id.sendButton);
-          uploadButton        = findViewById(R.id.uploadButton);
-          uploadProgress      = findViewById(R.id.uploadProgress);
-          recyclerView        = findViewById(R.id.messageRecycler);
-          typingIndicator     = findViewById(R.id.typingIndicator);
+          messageInput        = findViewById(R.id.etMessage);
+          sendButton          = findViewById(R.id.btnSend);
+          uploadButton        = findViewById(R.id.btnAttach);
+          uploadProgress      = null; // not in new layout
+          recyclerView        = findViewById(R.id.recyclerMessages);
+          typingIndicator     = null; // not in new layout
           replyPreviewBar     = findViewById(R.id.replyPreviewBar);
-          replyPreviewBarText = findViewById(R.id.replyPreviewBarText);
-          cancelReplyBtn      = findViewById(R.id.cancelReplyBtn);
-          pinnedBanner        = findViewById(R.id.pinnedBanner);
-          pinnedText          = findViewById(R.id.pinnedText);
-          pinnedCount         = findViewById(R.id.pinnedCount);
-          pinnedCloseBtn      = findViewById(R.id.pinnedCloseBtn);
+          replyPreviewBarText = findViewById(R.id.tvReplyPreview);
+          cancelReplyBtn      = findViewById(R.id.btnCancelReply);
+          pinnedBanner        = findViewById(R.id.pinnedStrip);
+          pinnedText          = findViewById(R.id.tvPinnedPreview);
+          pinnedCount         = null; // not in new layout
+          pinnedCloseBtn      = findViewById(R.id.btnClosePin);
 
           messages = new ArrayList<>();
           adapter  = new MessageAdapter(messages, myUid, null,
@@ -550,7 +550,7 @@ package com.duoshield.app;
           db.collection("conversations").document(conversationId)
             .collection("messages").document(msgId).set(doc)
             .addOnSuccessListener(v -> {
-                Message m = new Message(msgId, conversationId, myUid, "", now, false, mediaUrl, mediaType);
+                Message m = new Message(); m.setId(msgId); m.setConversationId(conversationId); m.setSender(myUid); m.setText(""); m.setTimestamp(now); m.setEncrypted(false); m.setMediaUrl(mediaUrl); m.setMediaType(mediaType);
                 m.setExpiresAt(exp); saveToRoom(m);
                 notifyPartner("DuoShield", "video".equals(mediaType) ? "Sent a video" : "Sent an image");
             });
@@ -568,7 +568,7 @@ package com.duoshield.app;
           db.collection("conversations").document(conversationId)
             .collection("messages").document(msgId).set(doc)
             .addOnSuccessListener(v -> {
-                saveToRoom(new Message(msgId, conversationId, myUid, cardText, now, false, null, "contact_card"));
+                { Message mc = new Message(); mc.setId(msgId); mc.setConversationId(conversationId); mc.setSender(myUid); mc.setText(cardText); mc.setTimestamp(now); mc.setEncrypted(false); mc.setMediaType("contact_card"); saveToRoom(mc); }
                 notifyPartner("DuoShield", "Shared a profile card");
             });
       }
@@ -601,7 +601,7 @@ package com.duoshield.app;
           db.collection("conversations").document(conversationId)
             .collection("messages").document(msgId).set(doc)
             .addOnSuccessListener(v -> {
-                Message m = new Message(msgId, conversationId, myUid, fc, now, true);
+                Message m = new Message(); m.setId(msgId); m.setConversationId(conversationId); m.setSender(myUid); m.setText(fc); m.setTimestamp(now); m.setEncrypted(true);
                 m.setExpiresAt(exp);
                 if (rId != null) { m.setReplyToId(rId); m.setReplyPreview(rPrv); }
                 saveToRoom(m);
@@ -638,7 +638,7 @@ package com.duoshield.app;
                         Long   expAt = dc.getDocument().getLong("expiresAt");
                         long   ts    = System.currentTimeMillis();
                         if (id != null) {
-                            Message m = new Message(id, convo, from, text, ts, false, mUrl, mType);
+                            Message m = new Message(); m.setId(id); m.setConversationId(convo); m.setSender(from); m.setText(text); m.setTimestamp(ts); m.setEncrypted(false); m.setMediaUrl(mUrl); m.setMediaType(mType);
                             if (rpId  != null) m.setReplyToId(rpId);
                             if (rpPrv != null) m.setReplyPreview(rpPrv);
                             if (expAt != null) m.setExpiresAt(expAt);

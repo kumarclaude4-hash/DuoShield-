@@ -2,7 +2,6 @@ package com.duoshield.app;
 
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.widget.ImageView;
 import android.widget.TextView;
 import com.duoshield.app.crypto.CryptoInitializer;
 import java.nio.charset.StandardCharsets;
@@ -21,30 +20,26 @@ public class KeyFingerprintActivity extends BaseActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
             getSupportActionBar().setTitle("Key Fingerprint");
         }
-        toolbar.setNavigationOnClickListener(v -> finish());
+        if (toolbar != null) toolbar.setNavigationOnClickListener(v -> finish());
 
-        TextView tvMyFingerprint      = findViewById(R.id.tvMyFingerprint);
-        TextView tvSharedFingerprint  = findViewById(R.id.tvSharedFingerprint);
-        TextView tvStatusLabel        = findViewById(R.id.tvStatusLabel);
+        // Layout IDs: tv_my_fingerprint, tv_partner_fingerprint (no tvStatusLabel in layout)
+        TextView tvMyFingerprint      = findViewById(R.id.tv_my_fingerprint);
+        TextView tvPartnerFingerprint = findViewById(R.id.tv_partner_fingerprint);
 
         SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
-        String myPubKey    = prefs.getString(CryptoInitializer.KEY_EC_PUBLIC, null);
-        String sharedKey   = prefs.getString(CryptoInitializer.KEY_SHARED_AES, null);
+        String myPubKey  = prefs.getString(CryptoInitializer.KEY_EC_PUBLIC, null);
+        String sharedKey = prefs.getString(CryptoInitializer.KEY_SHARED_AES, null);
 
-        if (myPubKey != null) {
-            tvMyFingerprint.setText(formatFingerprint(sha256(myPubKey)));
-        } else {
-            tvMyFingerprint.setText("Key not generated yet.");
-        }
+        if (tvMyFingerprint != null)
+            tvMyFingerprint.setText(myPubKey != null ? formatFingerprint(sha256(myPubKey)) : "Key not generated yet.");
 
-        if (sharedKey != null) {
-            tvSharedFingerprint.setText(formatFingerprint(sha256(sharedKey)));
-            tvStatusLabel.setText("✓ E2E encryption active");
-        } else {
-            tvSharedFingerprint.setText("Not yet derived – complete pairing with your partner.");
-            tvStatusLabel.setText("⚠ Pairing incomplete");
-        }
+        if (tvPartnerFingerprint != null)
+            tvPartnerFingerprint.setText(sharedKey != null
+                ? formatFingerprint(sha256(sharedKey))
+                : "Not derived — complete pairing with your partner.");
     }
+
+    @Override public boolean onSupportNavigateUp() { finish(); return true; }
 
     private String sha256(String input) {
         try {
@@ -58,11 +53,11 @@ public class KeyFingerprintActivity extends BaseActivity {
 
     private String formatFingerprint(String hex) {
         if (hex == null || hex.length() < 32) return hex;
-        String trimmed = hex.substring(0, 32).toUpperCase();
+        String t = hex.substring(0, 32).toUpperCase();
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < trimmed.length(); i += 4) {
+        for (int i = 0; i < t.length(); i += 4) {
             if (i > 0) sb.append(" ");
-            sb.append(trimmed.substring(i, Math.min(i + 4, trimmed.length())));
+            sb.append(t.substring(i, Math.min(i + 4, t.length())));
         }
         return sb.toString();
     }

@@ -22,28 +22,27 @@ public class SignInActivity extends AppCompatActivity {
 
     private FirebaseAuth mAuth;
     private EditText     etEmail, etPassword;
-    private Button       btnSignIn, btnRegister;
-    private ProgressBar  progressBar;
+    private Button       btnSignIn;
+    private View         tvSignUp;       // was btnRegister — now a clickable TextView in layout
+    private ProgressBar  progressSignIn; // was progressBar
     private TextView     tvError;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_sign_in);
 
-        mAuth       = FirebaseAuth.getInstance();
-        etEmail     = findViewById(R.id.etEmail);
-        etPassword  = findViewById(R.id.etPassword);
-        btnSignIn   = findViewById(R.id.btnSignIn);
-        btnRegister = findViewById(R.id.btnRegister);
-        progressBar = findViewById(R.id.progressBar);
-        tvError     = findViewById(R.id.tvError);
+        mAuth         = FirebaseAuth.getInstance();
+        etEmail       = findViewById(R.id.etEmail);
+        etPassword    = findViewById(R.id.etPassword);
+        btnSignIn     = findViewById(R.id.btnSignIn);
+        tvSignUp      = findViewById(R.id.tvSignUp);       // layout id changed from btnRegister
+        progressSignIn = findViewById(R.id.progressSignIn); // layout id changed from progressBar
+        tvError       = findViewById(R.id.tvError);
 
-        btnSignIn.setOnClickListener(v -> signIn());
-        btnRegister.setOnClickListener(v -> register());
+        if (btnSignIn != null) btnSignIn.setOnClickListener(v -> signIn());
+        if (tvSignUp  != null) tvSignUp.setOnClickListener(v -> register());
     }
 
     @Override
@@ -59,14 +58,8 @@ public class SignInActivity extends AppCompatActivity {
         if (!validate(email, pass)) return;
         setLoading(true);
         mAuth.signInWithEmailAndPassword(email, pass)
-            .addOnSuccessListener(r -> {
-                setLoading(false);
-                route(r.getUser().getUid());
-            })
-            .addOnFailureListener(e -> {
-                setLoading(false);
-                showError(e.getMessage());
-            });
+            .addOnSuccessListener(r -> { setLoading(false); route(r.getUser().getUid()); })
+            .addOnFailureListener(e -> { setLoading(false); showError(e.getMessage()); });
     }
 
     private void register() {
@@ -75,14 +68,8 @@ public class SignInActivity extends AppCompatActivity {
         if (!validate(email, pass)) return;
         setLoading(true);
         mAuth.createUserWithEmailAndPassword(email, pass)
-            .addOnSuccessListener(r -> {
-                setLoading(false);
-                route(r.getUser().getUid());
-            })
-            .addOnFailureListener(e -> {
-                setLoading(false);
-                showError(e.getMessage());
-            });
+            .addOnSuccessListener(r -> { setLoading(false); route(r.getUser().getUid()); })
+            .addOnFailureListener(e -> { setLoading(false); showError(e.getMessage()); });
     }
 
     private void route(String uid) {
@@ -101,20 +88,20 @@ public class SignInActivity extends AppCompatActivity {
     }
 
     private boolean validate(String email, String pass) {
-        if (email.isEmpty()) { showError("Enter your email."); return false; }
-        if (pass.length() < 6) { showError("Password must be at least 6 characters."); return false; }
-        tvError.setVisibility(View.GONE);
+        if (email.isEmpty())      { showError("Enter your email."); return false; }
+        if (pass.length() < 6)   { showError("Password must be at least 6 characters."); return false; }
+        if (tvError != null) tvError.setVisibility(View.GONE);
         return true;
     }
 
     private void showError(String msg) {
-        tvError.setText(msg);
-        tvError.setVisibility(View.VISIBLE);
+        if (tvError != null) { tvError.setText(msg); tvError.setVisibility(View.VISIBLE); }
+        else Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
     }
 
-    private void setLoading(boolean loading) {
-        progressBar.setVisibility(loading ? View.VISIBLE : View.GONE);
-        btnSignIn.setEnabled(!loading);
-        btnRegister.setEnabled(!loading);
+    private void setLoading(boolean on) {
+        if (progressSignIn != null) progressSignIn.setVisibility(on ? View.VISIBLE : View.GONE);
+        if (btnSignIn      != null) btnSignIn.setEnabled(!on);
+        if (tvSignUp       != null) tvSignUp.setEnabled(!on);
     }
 }
