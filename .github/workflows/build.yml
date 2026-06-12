@@ -22,12 +22,17 @@ jobs:
       - name: Set up Android SDK path
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
       - run: chmod +x gradlew
-      - name: Create google-services.json
+      - name: Inject google-services.json (if secret is set)
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
-      - name: Run Android Lint
-        run: ./gradlew lint --no-daemon
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            echo "google-services.json written from secret"
+          else
+            echo "Using committed google-services.json"
+          fi
+      - run: ./gradlew lint --no-daemon
       - name: Upload Lint report
         if: always()
         uses: actions/upload-artifact@v4
@@ -59,15 +64,20 @@ jobs:
       - name: Set up Android SDK path
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
       - run: chmod +x gradlew
-      - name: Create google-services.json
+      - name: Inject google-services.json (if secret is set)
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
-      - name: Build Debug APK (log to file)
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            echo "google-services.json written from secret"
+          else
+            echo "Using committed google-services.json"
+          fi
+      - name: Build Debug APK
         run: |
           set -o pipefail
           ./gradlew assembleDebug --no-daemon --info 2>&1 | tee /tmp/gradle-build.log
-          echo "Exit code: $?"
       - name: Upload Gradle build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,24 +86,36 @@ jobs:
           path: /tmp/gradle-build.log
           if-no-files-found: warn
           retention-days: 7
-      - name: Find and upload APK
-        run: |
-          echo "=== All APKs found ==="
-          find . -name "*.apk" 2>/dev/null || echo "NONE"
-          echo "=== app/build/ exists? ==="
-          ls app/build/ 2>/dev/null || echo "NO"
-          # Copy APK to a predictable path
-          mkdir -p /tmp/apk-out
-          find . -name "*.apk" -exec cp {} /tmp/apk-out/ \;
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: DuoShield-debug-${{ github.run_number }}
-          path: /tmp/apk-out/
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    name: Signed Release APK
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Set up Android SDK path
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+      - run: chmod +x gradlew
+      - name: Inject google-services.json (if secret is set)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+          fi
       - name: Build Release APK
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -108,7 +130,6 @@ jobs:
             -Pandroid.injected.signing.key.password="$KEY_PASSWORD" \
             --no-daemon
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: app/build/outputs/apk/**/*.apk
