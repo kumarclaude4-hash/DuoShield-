@@ -33,10 +33,7 @@
         android:pathData="M54,53 C55.1,53 56,53.9 56,55 C56,56.1 55.1,57 54,57 C52.9,57 52,56.1 52,55 C52,53.9 52.9,53 54,53 Z" />
 
     <!-- Lock keyhole stem -->
-    <rect
+    <path
         android:fillColor="#2AABB8"
-        android:left="52"
-        android:top="57"
-        android:right="56"
-        android:bottom="62" />
+        android:pathData="M52,57 L56,57 L56,62 L52,62 Z" />
 </vector>
