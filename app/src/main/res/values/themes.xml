@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ═══════════════════════════════════════════
          Base DuoShield Theme — Signal × Telegram
@@ -33,7 +33,7 @@
         <item name="android:navigationBarColor">@color/ds_background</item>
         <item name="android:statusBarColor">@color/ds_toolbar</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:ignore="NewApi">false</item>
 
         <!-- Shapes -->
         <item name="shapeAppearanceSmallComponent">@style/ShapeSmall</item>
@@ -63,7 +63,7 @@
         <item name="android:windowFullscreen">true</item>
         <item name="android:statusBarColor">@color/transparent</item>
         <item name="android:navigationBarColor">@color/transparent</item>
-        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:ignore="NewApi">shortEdges</item>
     </style>
 
     <!-- Lock screen — no animation, secure -->
