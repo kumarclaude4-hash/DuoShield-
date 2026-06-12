@@ -1,6 +1,7 @@
 package com.duoshield.app;
 
 import android.content.Intent;
+import android.annotation.SuppressLint;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
@@ -112,6 +113,7 @@ public class LockScreenActivity extends AppCompatActivity {
         finish();
     }
 
+    @SuppressLint("MissingSuperCall")
     @Override public void onBackPressed() {
         // Block back — user must authenticate
     }
