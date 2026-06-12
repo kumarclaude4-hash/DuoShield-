@@ -59,20 +59,19 @@
     <color name="transparent">#00000000</color>
 
     <!--
-        ═══════════════════════════════════════════════════════
-        BACKWARD-COMPAT ALIASES
-        Old Java/XML code may reference these legacy names.
-        Keep them pointing to the new design tokens.
-        ═══════════════════════════════════════════════════════
+        BACKWARD-COMPAT ALIASES — legacy names used in old XML / Java
     -->
     <color name="background">@color/ds_background</color>
     <color name="toolbar_bg">@color/ds_toolbar</color>
     <color name="surface">@color/ds_surface</color>
     <color name="text_primary">@color/ds_text_primary</color>
     <color name="text_secondary">@color/ds_text_secondary</color>
+    <color name="text_hint">@color/ds_text_tertiary</color>
+    <color name="text_on_accent">@color/ds_text_on_accent</color>
     <color name="accent">@color/ds_accent</color>
     <color name="divider">@color/ds_divider</color>
     <color name="badge_bg">@color/ds_badge_bg</color>
     <color name="bubble_mine">@color/ds_bubble_mine</color>
     <color name="bubble_theirs">@color/ds_bubble_theirs</color>
+    <color name="error_red">@color/ds_danger</color>
 </resources>

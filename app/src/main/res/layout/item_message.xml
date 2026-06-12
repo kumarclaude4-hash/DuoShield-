@@ -37,7 +37,7 @@
         android:id="@+id/messageBubble"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_maxWidth="280dp"
+        android:maxWidth="280dp"
         android:orientation="vertical"
         android:background="@drawable/bg_bubble_theirs"
         android:paddingStart="10dp"
@@ -128,7 +128,6 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="play voice" />
 
-            <!-- Waveform seekbar -->
             <SeekBar
                 android:id="@+id/voiceSeekBar"
                 android:layout_width="0dp"
@@ -181,7 +180,6 @@
                 android:layout_marginEnd="4dp"
                 android:visibility="gone" />
 
-            <!-- Pin indicator -->
             <ImageView
                 android:id="@+id/pinIndicator"
                 android:layout_width="12dp"
