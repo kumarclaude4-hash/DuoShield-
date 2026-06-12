@@ -9,7 +9,6 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
-import android.widget.TextView;
 import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -28,7 +27,7 @@ public class ConversationListActivity extends BaseActivity {
 
     private RecyclerView        recyclerView;
     private ConversationAdapter adapter;
-    private TextView            tvEmpty;
+    private View                tvEmpty;
     private EditText            etSearch;
 
     private FirebaseFirestore    db;

@@ -3,8 +3,9 @@ package com.duoshield.app;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
-import android.widget.SearchView;
-import android.widget.TextView;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.widget.EditText;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.duoshield.app.models.Message;
@@ -14,9 +15,9 @@ import java.util.List;
 
 public class MessageSearchActivity extends BaseActivity {
 
-    private SearchView           svSearch;
+    private EditText             svSearch;
     private RecyclerView         recyclerView;
-    private TextView             tvEmpty;
+    private View                 tvEmpty;
     private SearchResultsAdapter adapter;
     private String               conversationId;
 
@@ -47,19 +48,17 @@ public class MessageSearchActivity extends BaseActivity {
         }
 
         if (svSearch != null) {
-            svSearch.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
-                @Override public boolean onQueryTextSubmit(String q) {
-                    if (q.length() >= 2) runSearch(q);
-                    return true;
-                }
-                @Override public boolean onQueryTextChange(String q) {
+            svSearch.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    String q = s.toString().trim();
                     if (q.length() >= 2) runSearch(q);
                     else {
                         adapter.setMessages(new ArrayList<>());
                         if (tvEmpty != null) tvEmpty.setVisibility(View.GONE);
                     }
-                    return true;
                 }
+                @Override public void afterTextChanged(Editable s) {}
             });
         }
     }

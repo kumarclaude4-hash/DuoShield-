@@ -177,8 +177,8 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
 
     static class MessageViewHolder extends RecyclerView.ViewHolder {
         TextView    senderLabel, textView, cardName, cardUid, replyPreviewText,
-                    reactionText, pinIndicator, editedLabel, timestampView;
-        ImageView   imageView, videoThumbnail, videoPlayBtn, tickIcon;
+                    reactionText, editedLabel, timestampView;
+        ImageView   imageView, videoThumbnail, videoPlayBtn, tickIcon, pinIndicator;
         LinearLayout bubbleCard;  // LinearLayout in XML, not CardView (#12)
         View        videoContainer, replyPreviewContainer;
         LinearLayout contactCardContainer;
@@ -192,7 +192,7 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
             textView              = v.findViewById(R.id.messageText);
             imageView             = v.findViewById(R.id.messageImage);
             videoContainer        = v.findViewById(R.id.videoContainer);
-            videoThumbnail        = v.findViewById(R.id.messageImage);
+            videoThumbnail        = null;
             videoPlayBtn          = null;
             contactCardContainer  = v.findViewById(R.id.contactCardContainer);
             cardName              = v.findViewById(R.id.cardName);

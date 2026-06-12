@@ -150,6 +150,17 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Error message -->
+            <TextView
+                android:id="@+id/tvError"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center"
+                android:textColor="@color/ds_error"
+                android:textSize="14sp"
+                android:visibility="gone" />
+
             <!-- Sign up prompt -->
             <TextView
                 android:id="@+id/tvSignUp"
