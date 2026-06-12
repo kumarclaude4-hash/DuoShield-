@@ -13,4 +13,3 @@ deploymentTarget = "cloudrun"
 [userenv]
 
 [userenv.shared]
-Gitreplit = "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"
