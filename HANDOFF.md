@@ -293,6 +293,10 @@ Implemented in `MessageStatusHelper.bind(tickIcon, msg, myUid)`.
 
 ## Completed in This Session ✅
 
+### Wrong-PIN shake animation
+- **`res/anim/shake.xml`** + **`res/anim/shake_interpolator.xml`** — `cycleInterpolator` (3 cycles, 500 ms) drives a horizontal translate on the PIN `EditText` every time a wrong PIN is entered.
+- **`LockScreenActivity.java`** — `AnimationUtils.loadAnimation(this, R.anim.shake)` + `etPin.startAnimation(shake)` called immediately after `HapticHelper.wrongPin()`.
+
 ### Security / PIN / Duress fixes
 - **`BiometricHelper.java`** — removed `DEVICE_CREDENTIAL` from allowed authenticators; now uses `BIOMETRIC_STRONG` only with `setNegativeButtonText("Use PIN instead")`. Phone's system PIN/password is no longer used as an app fallback. If biometric unavailable/dismissed, `onFailure()` is called so `LockScreenActivity` shows the in-app PIN field. Added `isAvailable(Context)` helper.
 - **`LockScreenActivity.java`** — added 5-attempt fail counter: wrong PIN 5× triggers `WipeHelper.wipeAll()`; remaining-attempts message displayed after each failure. Biometric button only shown if `biometric_enabled` AND biometric is actually enrolled. If no app PIN is set, the lock screen skips itself immediately.

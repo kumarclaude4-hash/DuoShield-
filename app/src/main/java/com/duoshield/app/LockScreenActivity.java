@@ -4,6 +4,8 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -94,6 +96,8 @@ public class LockScreenActivity extends AppCompatActivity {
         } else {
             failedAttempts++;
             HapticHelper.wrongPin(this);
+            Animation shake = AnimationUtils.loadAnimation(this, R.anim.shake);
+            etPin.startAnimation(shake);
             etPin.setText("");
 
             int remaining = MAX_ATTEMPTS - failedAttempts;
