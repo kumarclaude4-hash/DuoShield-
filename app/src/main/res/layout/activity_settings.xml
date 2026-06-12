@@ -33,6 +33,64 @@
             android:orientation="vertical"
             android:paddingBottom="32dp">
 
+            <!-- ACCOUNT SECTION -->
+            <TextView style="@style/SectionHeader" android:text="@string/section_account"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@color/ds_surface"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="14dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_user_id"
+                    android:textColor="@color/ds_text_secondary"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.08" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="4dp">
+
+                    <TextView
+                        android:id="@+id/tvUserId"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="monospace"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/ds_text_primary"
+                        android:textIsSelectable="true" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCopyUserId"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/copy" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/label_user_id_desc"
+                    android:textColor="@color/ds_text_secondary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <View style="@style/Divider"/>
+
             <!-- SECURITY SECTION -->
             <TextView style="@style/SectionHeader" android:text="@string/section_security"/>
 

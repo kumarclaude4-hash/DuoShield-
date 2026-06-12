@@ -17,29 +17,32 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
             android:text="@string/reset_passphrase_description"
             android:textColor="@color/ds_text_secondary"
-            android:textSize="13sp" />
+            android:textSize="13sp"
+            android:layout_marginBottom="16dp" />
 
+        <!-- User ID (replaces email) -->
         <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/tilResetEmail"
+            android:id="@+id/tilResetUserId"
             style="@style/Widget.DuoShield.TextInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/hint_email"
+            android:hint="@string/hint_user_id"
             app:startIconDrawable="@drawable/ic_person"
             app:startIconTint="@color/ds_text_secondary">
 
             <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etResetEmail"
+                android:id="@+id/etResetUserId"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textEmailAddress"
+                android:inputType="textNoSuggestions"
                 android:textColor="@color/ds_text_primary"
+                android:fontFamily="monospace"
                 android:imeOptions="actionNext" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <!-- Recovery code -->
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tilResetRecovery"
             style="@style/Widget.DuoShield.TextInput"
@@ -61,6 +64,7 @@
                 android:imeOptions="actionNext" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <!-- New passphrase -->
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tilNewPassphrase"
             style="@style/Widget.DuoShield.TextInput"
@@ -82,6 +86,7 @@
                 android:imeOptions="actionNext" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <!-- Confirm new passphrase -->
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tilConfirmPassphrase"
             style="@style/Widget.DuoShield.TextInput"

@@ -1,5 +1,8 @@
 package com.duoshield.app.ui;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -43,6 +46,22 @@ public class SettingsActivity extends BaseActivity {
         if (toolbar != null) toolbar.setNavigationOnClickListener(v -> finish());
 
         prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
+
+        // ── User ID display ───────────────────────────────────────────────────
+        TextView tvUserId = findViewById(R.id.tvUserId);
+        com.google.android.material.button.MaterialButton btnCopyUserId =
+                findViewById(R.id.btnCopyUserId);
+        String userId = prefs.getString("my_user_id", null);
+        if (tvUserId != null) {
+            tvUserId.setText(userId != null ? userId : "—");
+        }
+        if (btnCopyUserId != null && userId != null) {
+            btnCopyUserId.setOnClickListener(v -> {
+                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(ClipData.newPlainText("user_id", userId));
+                Toast.makeText(this, R.string.user_id_copied, Toast.LENGTH_SHORT).show();
+            });
+        }
 
         switchBiometric = findViewById(R.id.switchBiometric);
         etDuressPin     = findViewById(R.id.etDuressPin);

@@ -26,6 +26,8 @@ import com.google.android.material.textfield.TextInputLayout;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.SetOptions;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -63,10 +65,7 @@ public class SignInActivity extends AppCompatActivity {
         progressSignIn   = findViewById(R.id.progressSignIn);
         tvError          = findViewById(R.id.tvError);
 
-        btnAction.setOnClickListener(v -> {
-            if (isSignUpMode) register();
-            else signIn();
-        });
+        btnAction.setOnClickListener(v -> { if (isSignUpMode) register(); else signIn(); });
         tvToggleMode.setOnClickListener(v -> toggleMode());
         tvForgotPassword.setOnClickListener(v -> showForgotPassphraseDialog());
     }
@@ -102,14 +101,8 @@ public class SignInActivity extends AppCompatActivity {
         if (!validateSignIn(email, pass)) return;
         setLoading(true);
         mAuth.signInWithEmailAndPassword(email, pass)
-                .addOnSuccessListener(r -> {
-                    setLoading(false);
-                    route(r.getUser().getUid());
-                })
-                .addOnFailureListener(e -> {
-                    setLoading(false);
-                    showError(friendlyError(e.getMessage()));
-                });
+                .addOnSuccessListener(r -> { setLoading(false); route(r.getUser().getUid()); })
+                .addOnFailureListener(e -> { setLoading(false); showError(friendlyError(e.getMessage())); });
     }
 
     // ── Register ──────────────────────────────────────────────────────────────
@@ -122,56 +115,50 @@ public class SignInActivity extends AppCompatActivity {
         mAuth.createUserWithEmailAndPassword(email, pass)
                 .addOnSuccessListener(r -> {
                     setLoading(false);
-                    String uid = r.getUser().getUid();
-                    // Generate recovery code and show it before routing
+                    String uid          = r.getUser().getUid();
+                    String userId       = RecoveryHelper.generateUserId();
                     String recoveryCode = RecoveryHelper.generateRecoveryCode();
-                    showRecoveryCodeDialog(email, pass, recoveryCode, uid);
+                    // Show both identifiers before persisting
+                    showRecoveryDialog(email, pass, userId, recoveryCode, uid);
                 })
-                .addOnFailureListener(e -> {
-                    setLoading(false);
-                    showError(friendlyError(e.getMessage()));
-                });
+                .addOnFailureListener(e -> { setLoading(false); showError(friendlyError(e.getMessage())); });
     }
 
-    // ── Recovery code dialog (shown ONCE at signup) ───────────────────────────
+    // ── Recovery dialog (shown ONCE at signup) ────────────────────────────────
 
-    private void showRecoveryCodeDialog(String email, String loginPass,
-                                         String recoveryCode, String uid) {
-        View dialogView = getLayoutInflater()
-                .inflate(R.layout.dialog_show_recovery, null);
+    private void showRecoveryDialog(String email, String loginPass,
+                                     String userId, String recoveryCode, String uid) {
+        View v = getLayoutInflater().inflate(R.layout.dialog_show_recovery, null);
 
-        TextView     tvCode   = dialogView.findViewById(R.id.tvRecoveryCode);
-        MaterialButton btnCopy = dialogView.findViewById(R.id.btnCopyCode);
-        CheckBox     cbSaved  = dialogView.findViewById(R.id.cbSaved);
+        TextView       tvUid      = v.findViewById(R.id.tvUserId);
+        TextView       tvCode     = v.findViewById(R.id.tvRecoveryCode);
+        MaterialButton btnCopyUid = v.findViewById(R.id.btnCopyUserId);
+        MaterialButton btnCopyCod = v.findViewById(R.id.btnCopyCode);
+        CheckBox       cbSaved    = v.findViewById(R.id.cbSaved);
 
+        tvUid.setText(userId);
         tvCode.setText(recoveryCode);
 
-        btnCopy.setOnClickListener(v -> {
-            ClipboardManager cm = (ClipboardManager)
-                    getSystemService(Context.CLIPBOARD_SERVICE);
-            cm.setPrimaryClip(ClipData.newPlainText("recovery_code", recoveryCode));
-            Toast.makeText(this, R.string.recovery_code_copied, Toast.LENGTH_SHORT).show();
-        });
+        btnCopyUid.setOnClickListener(x -> copyToClipboard("user_id",   userId,
+                getString(R.string.user_id_copied)));
+        btnCopyCod.setOnClickListener(x -> copyToClipboard("recovery_code", recoveryCode,
+                getString(R.string.recovery_code_copied)));
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(R.string.recovery_code_title)
-                .setView(dialogView)
+                .setView(v)
                 .setCancelable(false)
                 .setPositiveButton(R.string.recovery_code_continue, null)
                 .create();
 
         dialog.setOnShowListener(d -> {
-            MaterialButton continueBtn = (MaterialButton)
-                    dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            continueBtn.setEnabled(false);
-
-            cbSaved.setOnCheckedChangeListener((btn, checked) ->
-                    continueBtn.setEnabled(checked));
-
-            continueBtn.setOnClickListener(v -> {
+            MaterialButton cont = (MaterialButton) dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            cont.setEnabled(false);
+            cbSaved.setOnCheckedChangeListener((btn, checked) -> cont.setEnabled(checked));
+            cont.setOnClickListener(x -> {
                 dialog.dismiss();
                 setLoading(true);
-                storeRecoveryBlob(email, loginPass, recoveryCode, uid,
+                persistNewAccount(email, loginPass, userId, recoveryCode, uid,
                         () -> { setLoading(false); route(uid); },
                         err -> { setLoading(false); showError(err); });
             });
@@ -180,24 +167,42 @@ public class SignInActivity extends AppCompatActivity {
         dialog.show();
     }
 
-    // ── Persist recovery blob in Firestore ────────────────────────────────────
-
-    private void storeRecoveryBlob(String email, String loginPass, String recoveryCode,
-                                    String uid, Runnable onSuccess, Callback onError) {
+    /**
+     * After the user confirms they've saved their credentials:
+     *  1. Encrypt {email, passphrase} with recovery code → recovery/{uid}
+     *  2. Map userId → uid in identities/{userId}
+     *  3. Save userId to users/{uid} and to local SharedPreferences
+     */
+    private void persistNewAccount(String email, String loginPass, String userId,
+                                    String recoveryCode, String uid,
+                                    Runnable onDone, Callback onError) {
         new Thread(() -> {
             try {
-                String emailHash = RecoveryHelper.emailHash(email);
-                String blob      = RecoveryHelper.encryptLoginPassphrase(loginPass, recoveryCode);
+                String blob = RecoveryHelper.encryptCredentials(email, loginPass, recoveryCode);
 
-                Map<String, Object> doc = new HashMap<>();
-                doc.put("enc", blob);
-                doc.put("uid", uid);
+                // recovery/{uid}
+                Map<String, Object> recoveryDoc = new HashMap<>();
+                recoveryDoc.put("enc", blob);
 
-                db.collection("recovery").document(emailHash)
-                        .set(doc)
-                        .addOnSuccessListener(v -> runOnUiThread(onSuccess))
-                        .addOnFailureListener(e -> runOnUiThread(() ->
-                                onError.call(getString(R.string.error_generic))));
+                // identities/{userId} — userId → uid (for reset lookup)
+                Map<String, Object> identityDoc = new HashMap<>();
+                identityDoc.put("uid", uid);
+
+                // users/{uid} — add userId field
+                Map<String, Object> userUpdate = new HashMap<>();
+                userUpdate.put("userId", userId);
+
+                // Fan-out writes
+                db.collection("recovery").document(uid).set(recoveryDoc);
+                db.collection("identities").document(userId).set(identityDoc);
+                db.collection("users").document(uid)
+                        .set(userUpdate, SetOptions.merge());
+
+                // Persist locally
+                getSharedPreferences("duoshield_prefs", MODE_PRIVATE)
+                        .edit().putString("my_user_id", userId).apply();
+
+                runOnUiThread(onDone);
             } catch (Exception e) {
                 runOnUiThread(() -> onError.call(getString(R.string.error_generic)));
             }
@@ -207,57 +212,54 @@ public class SignInActivity extends AppCompatActivity {
     // ── Forgot passphrase dialog ──────────────────────────────────────────────
 
     private void showForgotPassphraseDialog() {
-        View dialogView = getLayoutInflater()
-                .inflate(R.layout.dialog_forgot_passphrase, null);
+        View v = getLayoutInflater().inflate(R.layout.dialog_forgot_passphrase, null);
 
-        TextInputEditText etResetEmail    = dialogView.findViewById(R.id.etResetEmail);
-        TextInputEditText etResetRecovery = dialogView.findViewById(R.id.etResetRecovery);
-        TextInputEditText etNewPass       = dialogView.findViewById(R.id.etNewPassphrase);
-        TextInputEditText etConfirmPass   = dialogView.findViewById(R.id.etConfirmPassphrase);
-        TextView          tvResetError    = dialogView.findViewById(R.id.tvResetError);
+        TextInputEditText etUserId    = v.findViewById(R.id.etResetUserId);
+        TextInputEditText etRecovery  = v.findViewById(R.id.etResetRecovery);
+        TextInputEditText etNewPass   = v.findViewById(R.id.etNewPassphrase);
+        TextInputEditText etConfirm   = v.findViewById(R.id.etConfirmPassphrase);
+        TextView          tvErr       = v.findViewById(R.id.tvResetError);
 
-        String currentEmail = getEmail();
-        if (!TextUtils.isEmpty(currentEmail)) etResetEmail.setText(currentEmail);
+        // Pre-fill User ID from local prefs if available
+        String savedUserId = getSharedPreferences("duoshield_prefs", MODE_PRIVATE)
+                .getString("my_user_id", null);
+        if (!TextUtils.isEmpty(savedUserId) && etUserId != null)
+            etUserId.setText(savedUserId);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(R.string.reset_passphrase_title)
-                .setView(dialogView)
+                .setView(v)
                 .setPositiveButton(R.string.reset_apply, null)
                 .setNegativeButton(R.string.cancel, null)
                 .create();
 
         dialog.setOnShowListener(d ->
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                    String email    = text(etResetEmail);
-                    String recovery = text(etResetRecovery);
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(x -> {
+                    String userId   = text(etUserId).toUpperCase();
+                    String recovery = text(etRecovery);
                     String newPass  = text(etNewPass);
-                    String confirm  = text(etConfirmPass);
+                    String confirm  = text(etConfirm);
 
-                    tvResetError.setVisibility(View.GONE);
+                    tvErr.setVisibility(View.GONE);
 
-                    if (TextUtils.isEmpty(email)) {
-                        setDialogError(tvResetError, getString(R.string.error_email_required));
-                        return;
+                    if (TextUtils.isEmpty(userId)) {
+                        setDialogErr(tvErr, getString(R.string.error_user_id_required)); return;
                     }
-                    if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                        setDialogError(tvResetError, getString(R.string.error_email_invalid));
-                        return;
+                    if (!userId.matches("DS-[0-9A-F]{8}")) {
+                        setDialogErr(tvErr, getString(R.string.error_user_id_invalid)); return;
                     }
                     if (TextUtils.isEmpty(recovery)) {
-                        setDialogError(tvResetError, getString(R.string.error_recovery_required));
-                        return;
+                        setDialogErr(tvErr, getString(R.string.error_recovery_required)); return;
                     }
                     if (newPass.length() < 8) {
-                        setDialogError(tvResetError, getString(R.string.error_passphrase_length));
-                        return;
+                        setDialogErr(tvErr, getString(R.string.error_passphrase_length)); return;
                     }
                     if (!newPass.equals(confirm)) {
-                        setDialogError(tvResetError, getString(R.string.error_passphrases_no_match));
-                        return;
+                        setDialogErr(tvErr, getString(R.string.error_passphrases_no_match)); return;
                     }
 
-                    setDialogButtons(dialog, false);
-                    performReset(email, recovery, newPass, tvResetError, dialog);
+                    setDialogBtns(dialog, false);
+                    performReset(userId, recovery, newPass, tvErr, dialog);
                 }));
 
         dialog.show();
@@ -265,96 +267,98 @@ public class SignInActivity extends AppCompatActivity {
 
     /**
      * Passphrase reset — no email, no OTP:
-     * 1. Fetch encrypted login passphrase from Firestore (public read, doc keyed by SHA-256 email)
-     * 2. Decrypt with the recovery code (AES-GCM + PBKDF2) → old passphrase
-     * 3. Re-authenticate with old passphrase
-     * 4. Update to new passphrase
-     * 5. Re-encrypt new passphrase under same recovery code → update Firestore
+     *  1. identities/{userId} → uid
+     *  2. recovery/{uid}     → encrypted blob
+     *  3. Decrypt blob with recovery code → {email, oldPassphrase}
+     *  4. signInWithEmailAndPassword(email, oldPassphrase)
+     *  5. user.updatePassword(newPassphrase)
+     *  6. Re-encrypt {email, newPassphrase} → update recovery/{uid}
      */
-    private void performReset(String email, String recoveryCode, String newPass,
-                               TextView tvResetError, AlertDialog dialog) {
-        new Thread(() -> {
-            try {
-                String emailHash = RecoveryHelper.emailHash(email);
-                db.collection("recovery").document(emailHash).get()
-                        .addOnSuccessListener(snap -> {
-                            if (!snap.exists() || TextUtils.isEmpty(snap.getString("enc"))) {
-                                runOnUiThread(() -> {
-                                    setDialogButtons(dialog, true);
-                                    setDialogError(tvResetError,
-                                            getString(!snap.exists()
-                                                    ? R.string.error_no_recovery_found
-                                                    : R.string.error_recovery_corrupt));
-                                });
-                                return;
-                            }
-                            String blob = snap.getString("enc");
-                            new Thread(() -> {
-                                try {
-                                    String oldPass = RecoveryHelper
-                                            .decryptLoginPassphrase(blob, recoveryCode);
-                                    runOnUiThread(() -> reauthAndUpdate(
-                                            email, oldPass, newPass,
-                                            emailHash, recoveryCode,
-                                            tvResetError, dialog));
-                                } catch (Exception e) {
-                                    runOnUiThread(() -> {
-                                        setDialogButtons(dialog, true);
-                                        setDialogError(tvResetError,
-                                                getString(R.string.error_recovery_wrong));
-                                    });
+    private void performReset(String userId, String recoveryCode, String newPass,
+                               TextView tvErr, AlertDialog dialog) {
+        // Step 1: resolve userId → uid
+        db.collection("identities").document(userId).get()
+                .addOnSuccessListener(idSnap -> {
+                    if (!idSnap.exists() || TextUtils.isEmpty(idSnap.getString("uid"))) {
+                        setDialogBtns(dialog, true);
+                        setDialogErr(tvErr, getString(R.string.error_user_id_not_found));
+                        return;
+                    }
+                    String uid = idSnap.getString("uid");
+
+                    // Step 2: fetch recovery blob
+                    db.collection("recovery").document(uid).get()
+                            .addOnSuccessListener(recSnap -> {
+                                String blob = recSnap.getString("enc");
+                                if (!recSnap.exists() || TextUtils.isEmpty(blob)) {
+                                    setDialogBtns(dialog, true);
+                                    setDialogErr(tvErr, getString(R.string.error_recovery_corrupt));
+                                    return;
                                 }
-                            }).start();
-                        })
-                        .addOnFailureListener(e -> runOnUiThread(() -> {
-                            setDialogButtons(dialog, true);
-                            setDialogError(tvResetError, friendlyError(e.getMessage()));
-                        }));
-            } catch (Exception e) {
-                runOnUiThread(() -> {
-                    setDialogButtons(dialog, true);
-                    setDialogError(tvResetError, friendlyError(e.getMessage()));
+
+                                // Step 3: decrypt in background thread
+                                new Thread(() -> {
+                                    try {
+                                        String[] creds = RecoveryHelper.decryptCredentials(blob, recoveryCode);
+                                        String email      = creds[0];
+                                        String oldPass    = creds[1];
+                                        runOnUiThread(() -> reauthAndUpdate(
+                                                email, oldPass, newPass, uid, recoveryCode,
+                                                tvErr, dialog));
+                                    } catch (Exception e) {
+                                        runOnUiThread(() -> {
+                                            setDialogBtns(dialog, true);
+                                            setDialogErr(tvErr, getString(R.string.error_recovery_wrong));
+                                        });
+                                    }
+                                }).start();
+                            })
+                            .addOnFailureListener(e -> {
+                                setDialogBtns(dialog, true);
+                                setDialogErr(tvErr, friendlyError(e.getMessage()));
+                            });
+                })
+                .addOnFailureListener(e -> {
+                    setDialogBtns(dialog, true);
+                    setDialogErr(tvErr, friendlyError(e.getMessage()));
                 });
-            }
-        }).start();
     }
 
     private void reauthAndUpdate(String email, String oldPass, String newPass,
-                                  String emailHash, String recoveryCode,
-                                  TextView tvResetError, AlertDialog dialog) {
+                                  String uid, String recoveryCode,
+                                  TextView tvErr, AlertDialog dialog) {
         mAuth.signInWithEmailAndPassword(email, oldPass)
                 .addOnSuccessListener(r -> {
                     FirebaseUser user = r.getUser();
                     if (user == null) {
-                        setDialogButtons(dialog, true);
-                        setDialogError(tvResetError, getString(R.string.error_generic));
+                        setDialogBtns(dialog, true);
+                        setDialogErr(tvErr, getString(R.string.error_generic));
                         return;
                     }
                     user.updatePassword(newPass)
-                            .addOnSuccessListener(v -> {
-                                updateRecoveryBlob(emailHash, newPass, recoveryCode);
+                            .addOnSuccessListener(x -> {
+                                reEncryptRecovery(email, newPass, uid, recoveryCode);
                                 dialog.dismiss();
                                 showSuccess(getString(R.string.reset_passphrase_success));
                             })
                             .addOnFailureListener(e -> {
-                                setDialogButtons(dialog, true);
-                                setDialogError(tvResetError, friendlyError(e.getMessage()));
+                                setDialogBtns(dialog, true);
+                                setDialogErr(tvErr, friendlyError(e.getMessage()));
                             });
                 })
                 .addOnFailureListener(e -> {
-                    setDialogButtons(dialog, true);
-                    setDialogError(tvResetError, getString(R.string.error_recovery_wrong));
+                    setDialogBtns(dialog, true);
+                    setDialogErr(tvErr, getString(R.string.error_recovery_wrong));
                 });
     }
 
-    private void updateRecoveryBlob(String emailHash, String newPass, String recoveryCode) {
+    private void reEncryptRecovery(String email, String newPass, String uid, String recoveryCode) {
         new Thread(() -> {
             try {
-                String newBlob = RecoveryHelper.encryptLoginPassphrase(newPass, recoveryCode);
-                Map<String, Object> update = new HashMap<>();
-                update.put("enc", newBlob);
-                db.collection("recovery").document(emailHash).update(update);
-            } catch (Exception ignored) { }
+                String newBlob = RecoveryHelper.encryptCredentials(email, newPass, recoveryCode);
+                db.collection("recovery").document(uid)
+                        .update(Collections.singletonMap("enc", newBlob));
+            } catch (Exception ignored) {}
         }).start();
     }
 
@@ -425,12 +429,17 @@ public class SignInActivity extends AppCompatActivity {
         }
     }
 
-    private static void setDialogError(TextView tv, String msg) {
-        tv.setText(msg);
-        tv.setVisibility(View.VISIBLE);
+    private void copyToClipboard(String label, String text, String toast) {
+        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(ClipData.newPlainText(label, text));
+        Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();
     }
 
-    private static void setDialogButtons(AlertDialog d, boolean enabled) {
+    private static void setDialogErr(TextView tv, String msg) {
+        tv.setText(msg); tv.setVisibility(View.VISIBLE);
+    }
+
+    private static void setDialogBtns(AlertDialog d, boolean enabled) {
         if (d.getButton(AlertDialog.BUTTON_POSITIVE) != null)
             d.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(enabled);
         if (d.getButton(AlertDialog.BUTTON_NEGATIVE) != null)
@@ -446,16 +455,12 @@ public class SignInActivity extends AppCompatActivity {
 
     private String getEmail()      { return etEmail    != null && etEmail.getText()    != null ? etEmail.getText().toString().trim() : ""; }
     private String getPassphrase() { return etPassword != null && etPassword.getText() != null ? etPassword.getText().toString()     : ""; }
-
-    private static String text(TextInputEditText et) {
-        return et != null && et.getText() != null ? et.getText().toString().trim() : "";
-    }
+    private static String text(TextInputEditText et) { return et != null && et.getText() != null ? et.getText().toString().trim() : ""; }
 
     private String friendlyError(String raw) {
         if (raw == null) return getString(R.string.error_generic);
         String lower = raw.toLowerCase();
-        if (lower.contains("password is invalid") || lower.contains("no user record")
-                || lower.contains("wrong password"))
+        if (lower.contains("password is invalid") || lower.contains("no user record") || lower.contains("wrong password"))
             return getString(R.string.error_invalid_credentials);
         if (lower.contains("email address is already in use"))
             return getString(R.string.error_email_in_use);
