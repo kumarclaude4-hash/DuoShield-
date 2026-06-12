@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="TextAppearance.DuoShield.ToolbarTitle" parent="TextAppearance.MaterialComponents.Headline6">
+        <item name="android:textColor">@color/ds_text_primary</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    <style name="TextAppearance.DuoShield.Body" parent="TextAppearance.MaterialComponents.Body1">
+        <item name="android:textColor">@color/ds_text_primary</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+    <style name="TextAppearance.DuoShield.Caption" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:textColor">@color/ds_text_secondary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+</resources>

@@ -1,3 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Bubble colors are defined in colors.xml — this file is intentionally empty -->
-<resources />
+<!-- Intentionally empty — bubble colours live in colors.xml -->
+<resources/>

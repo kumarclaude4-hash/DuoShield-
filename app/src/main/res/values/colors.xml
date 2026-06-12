@@ -1,45 +1,70 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Brand -->
-    <color name="accent">#2AABB8</color>
-    <color name="accent_dark">#1E8A95</color>
+    <!-- ── Base ── -->
+    <color name="ds_background">#0E1117</color>
+    <color name="ds_surface">#161B22</color>
+    <color name="ds_surface_2">#1C2330</color>
+    <color name="ds_surface_3">#21262D</color>
+    <color name="ds_divider">#30363D</color>
 
-    <!-- Backgrounds -->
-    <color name="background">#0D0D0D</color>
-    <color name="surface">#1E1E1E</color>
-    <color name="surface_alt">#262626</color>
-    <color name="toolbar_bg">#121212</color>
+    <!-- ── Brand / Accent ── -->
+    <color name="ds_accent">#2AABB8</color>
+    <color name="ds_accent_dim">#1A6E79</color>
+    <color name="ds_accent_ripple">#332AABB8</color>
+    <color name="ds_teal_light">#4FC3F7</color>
 
-    <!-- Text -->
-    <color name="text_primary">#FFFFFFFF</color>
-    <color name="text_secondary">#B3FFFFFF</color>
-    <color name="text_hint">#80FFFFFF</color>
-    <color name="text_on_accent">#FFFFFFFF</color>
+    <!-- ── Bubbles ── -->
+    <color name="ds_bubble_mine">#1A4F5C</color>
+    <color name="ds_bubble_mine_border">#2AABB8</color>
+    <color name="ds_bubble_theirs">#1E2733</color>
+    <color name="ds_bubble_theirs_border">#2D3748</color>
 
-    <!-- Bubbles -->
-    <color name="bubble_mine">#1A5C6E</color>
-    <color name="bubble_theirs">#1E1E1E</color>
+    <!-- ── Text ── -->
+    <color name="ds_text_primary">#E6EDF3</color>
+    <color name="ds_text_secondary">#8B949E</color>
+    <color name="ds_text_tertiary">#484F58</color>
+    <color name="ds_text_on_accent">#FFFFFF</color>
+    <color name="ds_text_link">#58A6FF</color>
+    <color name="ds_text_timestamp">#6E7681</color>
 
-    <!-- Ticks -->
-    <color name="tick_pending">#9E9E9E</color>
-    <color name="tick_sent">#90A4AE</color>
-    <color name="tick_read">#2AABB8</color>
+    <!-- ── Status ticks ── -->
+    <color name="ds_tick_pending">#6E7681</color>
+    <color name="ds_tick_sent">#8B949E</color>
+    <color name="ds_tick_delivered">#8B949E</color>
+    <color name="ds_tick_read">#2AABB8</color>
 
-    <!-- Status -->
-    <color name="online_green">#4CAF50</color>
-    <color name="error_red">#CF6679</color>
-    <color name="divider">#33FFFFFF</color>
+    <!-- ── Input / Toolbar ── -->
+    <color name="ds_toolbar">#161B22</color>
+    <color name="ds_input_bg">#1C2330</color>
+    <color name="ds_input_border">#30363D</color>
+    <color name="ds_input_border_focus">#2AABB8</color>
+    <color name="ds_send_button">#2AABB8</color>
 
-    <!-- Duress banner -->
-    <color name="duress_banner">#B00020</color>
+    <!-- ── Notifications / Badges ── -->
+    <color name="ds_badge_bg">#2AABB8</color>
+    <color name="ds_badge_text">#FFFFFF</color>
+    <color name="ds_muted_badge">#3D444D</color>
 
-    <!-- Unread badge -->
-    <color name="badge_bg">#2AABB8</color>
-    <color name="badge_text">#FFFFFFFF</color>
+    <!-- ── States ── -->
+    <color name="ds_online">#3FB950</color>
+    <color name="ds_offline">#6E7681</color>
+    <color name="ds_danger">#F85149</color>
+    <color name="ds_warning">#D29922</color>
+    <color name="ds_pin">#D29922</color>
 
-    <!-- Legacy compat (keep these so existing code compiles) -->
-    <color name="primary">#2AABB8</color>
-    <color name="primaryVariant">#1E8A95</color>
-    <color name="secondary">#2AABB8</color>
-    <color name="textPrimary">#FFFFFFFF</color>
+    <!-- ── Reply preview ── -->
+    <color name="ds_reply_bar">#2AABB8</color>
+    <color name="ds_reply_bg">#1A2D35</color>
+
+    <!-- ── Reaction pill ── -->
+    <color name="ds_reaction_bg">#1C2330</color>
+    <color name="ds_reaction_border">#30363D</color>
+    <color name="ds_reaction_border_active">#2AABB8</color>
+
+    <!-- ── Scrim / Overlay ── -->
+    <color name="ds_scrim">#CC0E1117</color>
+    <color name="ds_image_overlay">#80000000</color>
+
+    <!-- ── Transparent ── -->
+    <color name="transparent">#00000000</color>
 </resources>

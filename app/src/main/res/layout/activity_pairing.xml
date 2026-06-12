@@ -1,216 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/background"
-    android:fillViewport="true">
-
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="24dp">
-
-        <!-- App icon -->
-        <ImageView
-            android:id="@+id/ivLogo"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:src="@drawable/ic_secure"
-            android:scaleType="centerInside"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="32dp"/>
-
-        <!-- App title -->
-        <TextView
-            android:id="@+id/tvAppTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="DuoShield"
-            android:textSize="28sp"
-            android:textStyle="bold"
-            android:textColor="@color/primary"
-            app:layout_constraintTop_toBottomOf="@id/ivLogo"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="12dp"/>
-
-        <!-- Subtitle -->
-        <TextView
-            android:id="@+id/tvSubtitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Secure • Private • Just the two of you"
-            android:textSize="14sp"
-            android:textColor="#888888"
-            app:layout_constraintTop_toBottomOf="@id/tvAppTitle"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="4dp"/>
-
-        <!-- CARD: Create Room -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardCreate"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:layout_constraintTop_toBottomOf="@id/tvSubtitle"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="28dp">
-
-            <LinearLayout
-                android:orientation="vertical"
-                android:padding="20dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Create a Room"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/textPrimary"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Generate a code and share it with your partner."
-                    android:textSize="13sp"
-                    android:textColor="#888888"
-                    android:layout_marginTop="4dp"/>
-
-                <Button
-                    android:id="@+id/btnGenerateCode"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Generate Code"
-                    android:layout_marginTop="14dp"/>
-
-                <!-- 6-digit code display -->
-                <TextView
-                    android:id="@+id/tvPairCode"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textSize="40sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/primary"
-                    android:letterSpacing="0.3"
-                    android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="12dp"
-                    android:visibility="gone"/>
-
-                <TextView
-                    android:id="@+id/tvWaitingStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="⏳ Waiting for your partner to join..."
-                    android:textSize="13sp"
-                    android:textColor="#888888"
-                    android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="6dp"
-                    android:visibility="gone"/>
-
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- OR divider -->
-        <TextView
-            android:id="@+id/tvOr"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="— OR —"
-            android:textSize="13sp"
-            android:textColor="#AAAAAA"
-            app:layout_constraintTop_toBottomOf="@id/cardCreate"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="20dp"/>
-
-        <!-- CARD: Join Room -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/cardJoin"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:layout_constraintTop_toBottomOf="@id/tvOr"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="20dp">
-
-            <LinearLayout
-                android:orientation="vertical"
-                android:padding="20dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Join a Room"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/textPrimary"/>
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Have a code? Enter it below."
-                    android:textSize="13sp"
-                    android:textColor="#888888"
-                    android:layout_marginTop="4dp"/>
-
-                <EditText
-                    android:id="@+id/etJoinCode"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="number"
-                    android:maxLength="6"
-                    android:hint="Enter 6-digit code"
-                    android:textSize="22sp"
-                    android:gravity="center"
-                    android:layout_marginTop="12dp"/>
-
-                <Button
-                    android:id="@+id/btnJoinRoom"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Join Room"
-                    android:layout_marginTop="10dp"/>
-
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Progress bar -->
-        <ProgressBar
-            android:id="@+id/progressBar"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:indeterminate="true"
-            android:visibility="gone"
-            app:layout_constraintTop_toBottomOf="@id/cardJoin"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="20dp"/>
-
-        <!-- Error / status text -->
-        <TextView
-            android:id="@+id/tvPairingError"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#D32F2F"
-            android:textSize="13sp"
-            android:gravity="center"
-            android:visibility="gone"
-            app:layout_constraintTop_toBottomOf="@id/progressBar"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            android:layout_marginTop="12dp"/>
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
-</ScrollView>
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@color/ds_background"
+    android:fitsSystemWindows="true">
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar" android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        style="@style/Widget.DuoShield.Toolbar"
+        app:navigationIcon="@drawable/ic_arrow_back"
+        app:title="@string/pair_device"/>
+    <ScrollView android:layout_width="match_parent" android:layout_height="match_parent"
+        android:scrollbars="none">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="24dp" android:gravity="center_horizontal">
+            <ImageView android:layout_width="64dp" android:layout_height="64dp"
+                android:src="@drawable/ic_lock" app:tint="@color/ds_accent"
+                android:contentDescription="pair"/>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="12dp" android:gravity="center"
+                android:text="@string/pair_subtitle"
+                android:textColor="@color/ds_text_secondary" android:textSize="14sp"/>
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="28dp"
+                app:cardBackgroundColor="@color/ds_surface" app:cardCornerRadius="12dp"
+                app:cardElevation="0dp" app:strokeColor="@color/ds_divider" app:strokeWidth="1dp">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:orientation="vertical" android:padding="16dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="@string/your_code"
+                        android:textColor="@color/ds_accent" android:textSize="11sp"
+                        android:textAllCaps="true" android:letterSpacing="0.08"/>
+                    <TextView android:id="@+id/tvMyCode"
+                        android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:textColor="@color/ds_text_primary" android:textSize="13sp"
+                        android:fontFamily="monospace" android:lineSpacingMultiplier="1.5"
+                        android:background="@color/ds_surface_2"
+                        android:padding="10dp"/>
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCopyCode"
+                        android:layout_width="match_parent" android:layout_height="44dp"
+                        android:layout_marginTop="12dp" android:text="@string/copy_code"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        app:strokeColor="@color/ds_accent" app:cornerRadius="10dp"
+                        android:textColor="@color/ds_accent"/>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.DuoShield.TextInput"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="20dp" android:hint="@string/hint_partner_code">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etPartnerCode"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:inputType="text" android:textColor="@color/ds_text_primary"
+                    android:fontFamily="monospace"/>
+            </com.google.android.material.textfield.TextInputLayout>
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPair"
+                android:layout_width="match_parent" android:layout_height="52dp"
+                android:layout_marginTop="20dp" android:text="@string/pair"
+                app:backgroundTint="@color/ds_accent" app:cornerRadius="12dp"
+                android:textStyle="bold"/>
+            <com.google.android.material.progressindicator.CircularProgressIndicator
+                android:id="@+id/progressPairing"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="16dp" android:visibility="gone"
+                app:indicatorColor="@color/ds_accent" app:trackColor="@color/ds_divider"/>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

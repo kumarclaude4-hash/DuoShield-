@@ -4,76 +4,114 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background">
+    android:background="@color/ds_background"
+    android:fitsSystemWindows="true">
 
     <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/appbar"
+        android:id="@+id/appBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/toolbar_bg">
+        android:background="@color/ds_toolbar"
+        app:elevation="0dp">
 
-        <androidx.appcompat.widget.Toolbar
+        <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="@color/toolbar_bg"
-            app:titleTextColor="@color/text_primary" />
-    </com.google.android.material.appbar.AppBarLayout>
+            style="@style/Widget.DuoShield.Toolbar"
+            app:title="@string/conversations"
+            app:titleTextAppearance="@style/TextAppearance.DuoShield.ToolbarTitle"
+            app:menu="@menu/conversation_list_menu" />
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior">
-
-        <!-- Inline search bar -->
-        <EditText
+        <!-- Search bar (collapsible) -->
+        <com.google.android.material.search.SearchBar
             android:id="@+id/etSearch"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:hint="Search conversations…"
-            android:textColorHint="@color/text_hint"
-            android:textColor="@color/text_primary"
-            android:background="@color/surface_alt"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:drawableStart="@drawable/ic_search"
-            android:drawablePadding="8dp"
-            android:inputType="text"
-            android:imeOptions="actionSearch"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:layout_marginBottom="8dp"
+            android:hint="@string/search_conversations"
+            android:textColor="@color/ds_text_primary"
+            app:navigationIconTint="@color/ds_text_secondary"
+            android:background="@drawable/bg_search_bar"
             android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/tv_offline_banner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@color/error_red"
-            android:text="@string/offline"
-            android:textColor="@color/text_primary"
-            android:textSize="12sp"
-            android:gravity="center"
-            android:padding="4dp"
-            android:visibility="gone" />
+    </com.google.android.material.appbar.AppBarLayout>
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recyclerConversations"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:clipToPadding="false"
-            android:paddingBottom="80dp" />
+    <!-- Offline banner -->
+    <TextView
+        android:id="@+id/bannerOffline"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:gravity="center"
+        android:text="@string/no_network"
+        android:textColor="@color/ds_text_on_accent"
+        android:textSize="13sp"
+        android:background="@color/ds_warning"
+        android:visibility="gone"
+        app:layout_anchor="@id/appBar"
+        app:layout_anchorGravity="bottom" />
+
+    <!-- Conversation list -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerConversations"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scrollbars="none"
+        android:clipToPadding="false"
+        android:paddingBottom="88dp"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+
+    <!-- Empty state -->
+    <LinearLayout
+        android:id="@+id/tvEmpty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:src="@drawable/ic_shield"
+            android:alpha="0.25"
+            app:tint="@color/ds_text_secondary"
+            android:contentDescription="no conversations" />
 
         <TextView
-            android:id="@+id/tvEmpty"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:gravity="center"
+            android:layout_marginTop="20dp"
             android:text="@string/no_conversations"
-            android:textColor="@color/text_secondary"
-            android:textSize="16sp"
-            android:padding="48dp"
-            android:visibility="gone" />
+            android:textColor="@color/ds_text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/no_conversations_sub"
+            android:textColor="@color/ds_text_secondary"
+            android:textSize="14sp"
+            android:gravity="center" />
+
     </LinearLayout>
+
+    <!-- FAB: New chat -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabNewChat"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="20dp"
+        android:src="@drawable/ic_edit"
+        android:contentDescription="@string/new_chat"
+        style="@style/Widget.DuoShield.FAB" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
