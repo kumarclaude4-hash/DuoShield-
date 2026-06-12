@@ -14,6 +14,10 @@ import javax.crypto.spec.SecretKeySpec;
 /**
  * Passphrase-based account recovery.
  *
+ * Recovery code format: 4 groups of 8 uppercase hex chars, e.g.
+ *   A1B2C3D4-E5F6G7H8-I9J0K1L2-M3N4O5P6  (128 bits of entropy)
+ *
+ *
  * Flow:
  *  Signup  → encryptLoginPassphrase(loginPass, recoveryPass) → store {enc, salt} in Firestore
  *  Reset   → decryptLoginPassphrase(enc, salt, recoveryPass) → old login pass →
@@ -28,6 +32,21 @@ public class RecoveryHelper {
     private static final int SALT_BYTES         = 16;
     private static final int IV_BYTES           = 12;
     private static final int TAG_BITS           = 128;
+
+    /**
+     * Generate a random 128-bit recovery code formatted as 4 groups of 8 uppercase hex chars.
+     * Example: A1B2C3D4-E5F6G7H8-I9J0K1L2-M3N4O5P6
+     */
+    public static String generateRecoveryCode() {
+        byte[] bytes = new byte[16];
+        new SecureRandom().nextBytes(bytes);
+        StringBuilder sb = new StringBuilder(39);
+        for (int i = 0; i < 16; i++) {
+            if (i > 0 && i % 4 == 0) sb.append('-');
+            sb.append(String.format("%02X", bytes[i]));
+        }
+        return sb.toString();
+    }
 
     public static byte[] generateSalt() {
         byte[] salt = new byte[SALT_BYTES];

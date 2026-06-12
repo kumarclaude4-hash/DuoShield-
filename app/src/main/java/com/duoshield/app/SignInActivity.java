@@ -1,12 +1,17 @@
 package com.duoshield.app;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.CheckBox;
 import android.widget.TextView;
+import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import com.duoshield.app.crypto.CryptoInitializer;
@@ -29,10 +34,10 @@ public class SignInActivity extends AppCompatActivity {
     private FirebaseAuth            mAuth;
     private FirebaseFirestore       db;
 
-    private TextInputLayout         tilEmail, tilPassword, tilRecoveryPhrase;
-    private TextInputEditText       etEmail, etPassword, etRecoveryPhrase;
+    private TextInputLayout         tilEmail, tilPassword;
+    private TextInputEditText       etEmail, etPassword;
     private MaterialButton          btnAction;
-    private TextView                tvToggleMode, tvForgotPassword, tvError, tvRecoveryNote;
+    private TextView                tvToggleMode, tvForgotPassword, tvError;
     private LinearProgressIndicator progressSignIn;
 
     private boolean isSignUpMode = false;
@@ -48,18 +53,15 @@ public class SignInActivity extends AppCompatActivity {
         mAuth = FirebaseAuth.getInstance();
         db    = FirebaseFirestore.getInstance();
 
-        tilEmail          = findViewById(R.id.tilEmail);
-        tilPassword       = findViewById(R.id.tilPassword);
-        tilRecoveryPhrase = findViewById(R.id.tilRecoveryPhrase);
-        etEmail           = findViewById(R.id.etEmail);
-        etPassword        = findViewById(R.id.etPassword);
-        etRecoveryPhrase  = findViewById(R.id.etRecoveryPhrase);
-        btnAction         = findViewById(R.id.btnSignIn);
-        tvToggleMode      = findViewById(R.id.tvSignUp);
-        tvForgotPassword  = findViewById(R.id.tvForgotPassword);
-        tvRecoveryNote    = findViewById(R.id.tvRecoveryNote);
-        progressSignIn    = findViewById(R.id.progressSignIn);
-        tvError           = findViewById(R.id.tvError);
+        tilEmail         = findViewById(R.id.tilEmail);
+        tilPassword      = findViewById(R.id.tilPassword);
+        etEmail          = findViewById(R.id.etEmail);
+        etPassword       = findViewById(R.id.etPassword);
+        btnAction        = findViewById(R.id.btnSignIn);
+        tvToggleMode     = findViewById(R.id.tvSignUp);
+        tvForgotPassword = findViewById(R.id.tvForgotPassword);
+        progressSignIn   = findViewById(R.id.progressSignIn);
+        tvError          = findViewById(R.id.tvError);
 
         btnAction.setOnClickListener(v -> {
             if (isSignUpMode) register();
@@ -84,14 +86,10 @@ public class SignInActivity extends AppCompatActivity {
         if (isSignUpMode) {
             btnAction.setText(R.string.sign_up);
             tvToggleMode.setText(R.string.have_account);
-            tilRecoveryPhrase.setVisibility(View.VISIBLE);
-            tvRecoveryNote.setVisibility(View.VISIBLE);
             tvForgotPassword.setVisibility(View.GONE);
         } else {
             btnAction.setText(R.string.sign_in);
             tvToggleMode.setText(R.string.no_account);
-            tilRecoveryPhrase.setVisibility(View.GONE);
-            tvRecoveryNote.setVisibility(View.GONE);
             tvForgotPassword.setVisibility(View.VISIBLE);
         }
     }
@@ -117,17 +115,17 @@ public class SignInActivity extends AppCompatActivity {
     // ── Register ──────────────────────────────────────────────────────────────
 
     private void register() {
-        String email    = getEmail();
-        String pass     = getPassphrase();
-        String recovery = getRecoveryPhrase();
-        if (!validateSignUp(email, pass, recovery)) return;
+        String email = getEmail();
+        String pass  = getPassphrase();
+        if (!validateSignUp(email, pass)) return;
         setLoading(true);
         mAuth.createUserWithEmailAndPassword(email, pass)
                 .addOnSuccessListener(r -> {
+                    setLoading(false);
                     String uid = r.getUser().getUid();
-                    storeRecoveryBlob(email, pass, recovery, uid,
-                            () -> { setLoading(false); route(uid); },
-                            err -> { setLoading(false); showError(err); });
+                    // Generate recovery code and show it before routing
+                    String recoveryCode = RecoveryHelper.generateRecoveryCode();
+                    showRecoveryCodeDialog(email, pass, recoveryCode, uid);
                 })
                 .addOnFailureListener(e -> {
                     setLoading(false);
@@ -135,13 +133,61 @@ public class SignInActivity extends AppCompatActivity {
                 });
     }
 
-    /** Encrypt loginPassphrase with recoveryPassphrase and persist in Firestore. */
-    private void storeRecoveryBlob(String email, String loginPass, String recoveryPass,
-                                   String uid, Runnable onSuccess, Callback onError) {
+    // ── Recovery code dialog (shown ONCE at signup) ───────────────────────────
+
+    private void showRecoveryCodeDialog(String email, String loginPass,
+                                         String recoveryCode, String uid) {
+        View dialogView = getLayoutInflater()
+                .inflate(R.layout.dialog_show_recovery, null);
+
+        TextView     tvCode   = dialogView.findViewById(R.id.tvRecoveryCode);
+        MaterialButton btnCopy = dialogView.findViewById(R.id.btnCopyCode);
+        CheckBox     cbSaved  = dialogView.findViewById(R.id.cbSaved);
+
+        tvCode.setText(recoveryCode);
+
+        btnCopy.setOnClickListener(v -> {
+            ClipboardManager cm = (ClipboardManager)
+                    getSystemService(Context.CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(ClipData.newPlainText("recovery_code", recoveryCode));
+            Toast.makeText(this, R.string.recovery_code_copied, Toast.LENGTH_SHORT).show();
+        });
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.recovery_code_title)
+                .setView(dialogView)
+                .setCancelable(false)
+                .setPositiveButton(R.string.recovery_code_continue, null)
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            MaterialButton continueBtn = (MaterialButton)
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            continueBtn.setEnabled(false);
+
+            cbSaved.setOnCheckedChangeListener((btn, checked) ->
+                    continueBtn.setEnabled(checked));
+
+            continueBtn.setOnClickListener(v -> {
+                dialog.dismiss();
+                setLoading(true);
+                storeRecoveryBlob(email, loginPass, recoveryCode, uid,
+                        () -> { setLoading(false); route(uid); },
+                        err -> { setLoading(false); showError(err); });
+            });
+        });
+
+        dialog.show();
+    }
+
+    // ── Persist recovery blob in Firestore ────────────────────────────────────
+
+    private void storeRecoveryBlob(String email, String loginPass, String recoveryCode,
+                                    String uid, Runnable onSuccess, Callback onError) {
         new Thread(() -> {
             try {
                 String emailHash = RecoveryHelper.emailHash(email);
-                String blob      = RecoveryHelper.encryptLoginPassphrase(loginPass, recoveryPass);
+                String blob      = RecoveryHelper.encryptLoginPassphrase(loginPass, recoveryCode);
 
                 Map<String, Object> doc = new HashMap<>();
                 doc.put("enc", blob);
@@ -151,10 +197,9 @@ public class SignInActivity extends AppCompatActivity {
                         .set(doc)
                         .addOnSuccessListener(v -> runOnUiThread(onSuccess))
                         .addOnFailureListener(e -> runOnUiThread(() ->
-                                onError.call("Account created but recovery setup failed: "
-                                        + e.getMessage())));
+                                onError.call(getString(R.string.error_generic))));
             } catch (Exception e) {
-                runOnUiThread(() -> onError.call("Recovery encryption error: " + e.getMessage()));
+                runOnUiThread(() -> onError.call(getString(R.string.error_generic)));
             }
         }).start();
     }
@@ -165,11 +210,11 @@ public class SignInActivity extends AppCompatActivity {
         View dialogView = getLayoutInflater()
                 .inflate(R.layout.dialog_forgot_passphrase, null);
 
-        TextInputEditText etResetEmail     = dialogView.findViewById(R.id.etResetEmail);
-        TextInputEditText etResetRecovery  = dialogView.findViewById(R.id.etResetRecovery);
-        TextInputEditText etNewPass        = dialogView.findViewById(R.id.etNewPassphrase);
-        TextInputEditText etConfirmPass    = dialogView.findViewById(R.id.etConfirmPassphrase);
-        TextView          tvResetError     = dialogView.findViewById(R.id.tvResetError);
+        TextInputEditText etResetEmail    = dialogView.findViewById(R.id.etResetEmail);
+        TextInputEditText etResetRecovery = dialogView.findViewById(R.id.etResetRecovery);
+        TextInputEditText etNewPass       = dialogView.findViewById(R.id.etNewPassphrase);
+        TextInputEditText etConfirmPass   = dialogView.findViewById(R.id.etConfirmPassphrase);
+        TextView          tvResetError    = dialogView.findViewById(R.id.tvResetError);
 
         String currentEmail = getEmail();
         if (!TextUtils.isEmpty(currentEmail)) etResetEmail.setText(currentEmail);
@@ -181,154 +226,135 @@ public class SignInActivity extends AppCompatActivity {
                 .setNegativeButton(R.string.cancel, null)
                 .create();
 
-        dialog.setOnShowListener(d -> {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                String email    = text(etResetEmail);
-                String recovery = text(etResetRecovery);
-                String newPass  = text(etNewPass);
-                String confirm  = text(etConfirmPass);
+        dialog.setOnShowListener(d ->
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    String email    = text(etResetEmail);
+                    String recovery = text(etResetRecovery);
+                    String newPass  = text(etNewPass);
+                    String confirm  = text(etConfirmPass);
 
-                tvResetError.setVisibility(View.GONE);
+                    tvResetError.setVisibility(View.GONE);
 
-                if (TextUtils.isEmpty(email)) {
-                    showDialogError(tvResetError, getString(R.string.error_email_required));
-                    return;
-                }
-                if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                    showDialogError(tvResetError, getString(R.string.error_email_invalid));
-                    return;
-                }
-                if (TextUtils.isEmpty(recovery)) {
-                    showDialogError(tvResetError, getString(R.string.error_recovery_required));
-                    return;
-                }
-                if (newPass.length() < 8) {
-                    showDialogError(tvResetError, getString(R.string.error_passphrase_length));
-                    return;
-                }
-                if (!newPass.equals(confirm)) {
-                    showDialogError(tvResetError, getString(R.string.error_passphrases_no_match));
-                    return;
-                }
+                    if (TextUtils.isEmpty(email)) {
+                        setDialogError(tvResetError, getString(R.string.error_email_required));
+                        return;
+                    }
+                    if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                        setDialogError(tvResetError, getString(R.string.error_email_invalid));
+                        return;
+                    }
+                    if (TextUtils.isEmpty(recovery)) {
+                        setDialogError(tvResetError, getString(R.string.error_recovery_required));
+                        return;
+                    }
+                    if (newPass.length() < 8) {
+                        setDialogError(tvResetError, getString(R.string.error_passphrase_length));
+                        return;
+                    }
+                    if (!newPass.equals(confirm)) {
+                        setDialogError(tvResetError, getString(R.string.error_passphrases_no_match));
+                        return;
+                    }
 
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
-                dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(false);
-
-                performReset(email, recovery, newPass, tvResetError, dialog);
-            });
-        });
+                    setDialogButtons(dialog, false);
+                    performReset(email, recovery, newPass, tvResetError, dialog);
+                }));
 
         dialog.show();
     }
 
     /**
-     * Full passphrase reset — no email link, no OTP:
-     *  1. Fetch recovery blob from Firestore (public read)
-     *  2. Decrypt old passphrase using recovery passphrase
-     *  3. Re-authenticate with old passphrase
-     *  4. Update to new passphrase
-     *  5. Re-encrypt new passphrase and update Firestore
+     * Passphrase reset — no email, no OTP:
+     * 1. Fetch encrypted login passphrase from Firestore (public read, doc keyed by SHA-256 email)
+     * 2. Decrypt with the recovery code (AES-GCM + PBKDF2) → old passphrase
+     * 3. Re-authenticate with old passphrase
+     * 4. Update to new passphrase
+     * 5. Re-encrypt new passphrase under same recovery code → update Firestore
      */
-    private void performReset(String email, String recoveryPass, String newPass,
+    private void performReset(String email, String recoveryCode, String newPass,
                                TextView tvResetError, AlertDialog dialog) {
         new Thread(() -> {
             try {
                 String emailHash = RecoveryHelper.emailHash(email);
-
                 db.collection("recovery").document(emailHash).get()
                         .addOnSuccessListener(snap -> {
-                            if (!snap.exists()) {
+                            if (!snap.exists() || TextUtils.isEmpty(snap.getString("enc"))) {
                                 runOnUiThread(() -> {
-                                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
-                                    showDialogError(tvResetError,
-                                            getString(R.string.error_no_recovery_found));
+                                    setDialogButtons(dialog, true);
+                                    setDialogError(tvResetError,
+                                            getString(!snap.exists()
+                                                    ? R.string.error_no_recovery_found
+                                                    : R.string.error_recovery_corrupt));
                                 });
                                 return;
                             }
-
                             String blob = snap.getString("enc");
-                            if (TextUtils.isEmpty(blob)) {
-                                runOnUiThread(() -> {
-                                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
-                                    showDialogError(tvResetError,
-                                            getString(R.string.error_recovery_corrupt));
-                                });
-                                return;
-                            }
-
                             new Thread(() -> {
                                 try {
                                     String oldPass = RecoveryHelper
-                                            .decryptLoginPassphrase(blob, recoveryPass);
-                                    runOnUiThread(() ->
-                                            reauthAndUpdate(email, oldPass, newPass,
-                                                    emailHash, recoveryPass,
-                                                    tvResetError, dialog));
+                                            .decryptLoginPassphrase(blob, recoveryCode);
+                                    runOnUiThread(() -> reauthAndUpdate(
+                                            email, oldPass, newPass,
+                                            emailHash, recoveryCode,
+                                            tvResetError, dialog));
                                 } catch (Exception e) {
                                     runOnUiThread(() -> {
-                                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                                        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
-                                        showDialogError(tvResetError,
+                                        setDialogButtons(dialog, true);
+                                        setDialogError(tvResetError,
                                                 getString(R.string.error_recovery_wrong));
                                     });
                                 }
                             }).start();
                         })
                         .addOnFailureListener(e -> runOnUiThread(() -> {
-                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
-                            showDialogError(tvResetError, friendlyError(e.getMessage()));
+                            setDialogButtons(dialog, true);
+                            setDialogError(tvResetError, friendlyError(e.getMessage()));
                         }));
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
-                    showDialogError(tvResetError, friendlyError(e.getMessage()));
+                    setDialogButtons(dialog, true);
+                    setDialogError(tvResetError, friendlyError(e.getMessage()));
                 });
             }
         }).start();
     }
 
     private void reauthAndUpdate(String email, String oldPass, String newPass,
-                                  String emailHash, String recoveryPass,
+                                  String emailHash, String recoveryCode,
                                   TextView tvResetError, AlertDialog dialog) {
         mAuth.signInWithEmailAndPassword(email, oldPass)
                 .addOnSuccessListener(r -> {
                     FirebaseUser user = r.getUser();
                     if (user == null) {
-                        re_enable(dialog);
-                        showDialogError(tvResetError, getString(R.string.error_generic));
+                        setDialogButtons(dialog, true);
+                        setDialogError(tvResetError, getString(R.string.error_generic));
                         return;
                     }
                     user.updatePassword(newPass)
                             .addOnSuccessListener(v -> {
-                                updateRecoveryBlob(emailHash, newPass, recoveryPass);
+                                updateRecoveryBlob(emailHash, newPass, recoveryCode);
                                 dialog.dismiss();
                                 showSuccess(getString(R.string.reset_passphrase_success));
                             })
                             .addOnFailureListener(e -> {
-                                re_enable(dialog);
-                                showDialogError(tvResetError, friendlyError(e.getMessage()));
+                                setDialogButtons(dialog, true);
+                                setDialogError(tvResetError, friendlyError(e.getMessage()));
                             });
                 })
                 .addOnFailureListener(e -> {
-                    re_enable(dialog);
-                    showDialogError(tvResetError, getString(R.string.error_recovery_wrong));
+                    setDialogButtons(dialog, true);
+                    setDialogError(tvResetError, getString(R.string.error_recovery_wrong));
                 });
     }
 
-    /** Re-encrypt new passphrase with recovery passphrase and update Firestore. */
-    private void updateRecoveryBlob(String emailHash, String newPass, String recoveryPass) {
+    private void updateRecoveryBlob(String emailHash, String newPass, String recoveryCode) {
         new Thread(() -> {
             try {
-                String newBlob = RecoveryHelper.encryptLoginPassphrase(newPass, recoveryPass);
+                String newBlob = RecoveryHelper.encryptLoginPassphrase(newPass, recoveryCode);
                 Map<String, Object> update = new HashMap<>();
                 update.put("enc", newBlob);
                 db.collection("recovery").document(emailHash).update(update);
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) { }
         }).start();
     }
 
@@ -365,7 +391,7 @@ public class SignInActivity extends AppCompatActivity {
         return ok;
     }
 
-    private boolean validateSignUp(String email, String pass, String recovery) {
+    private boolean validateSignUp(String email, String pass) {
         clearErrors();
         boolean ok = true;
         if (TextUtils.isEmpty(email)) {
@@ -376,24 +402,15 @@ public class SignInActivity extends AppCompatActivity {
         if (pass.length() < 8) {
             tilPassword.setError(getString(R.string.error_passphrase_length)); ok = false;
         }
-        if (TextUtils.isEmpty(recovery)) {
-            tilRecoveryPhrase.setError(getString(R.string.error_recovery_required)); ok = false;
-        } else if (recovery.length() < 8) {
-            tilRecoveryPhrase.setError(getString(R.string.error_recovery_length)); ok = false;
-        }
-        if (pass.equals(recovery)) {
-            tilRecoveryPhrase.setError(getString(R.string.error_recovery_same_as_pass)); ok = false;
-        }
         return ok;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private void clearErrors() {
-        if (tilEmail          != null) tilEmail.setError(null);
-        if (tilPassword       != null) tilPassword.setError(null);
-        if (tilRecoveryPhrase != null) tilRecoveryPhrase.setError(null);
-        if (tvError           != null) tvError.setVisibility(View.GONE);
+        if (tilEmail    != null) tilEmail.setError(null);
+        if (tilPassword != null) tilPassword.setError(null);
+        if (tvError     != null) tvError.setVisibility(View.GONE);
     }
 
     private void showError(String msg) {
@@ -408,9 +425,16 @@ public class SignInActivity extends AppCompatActivity {
         }
     }
 
-    private static void showDialogError(TextView tv, String msg) {
+    private static void setDialogError(TextView tv, String msg) {
         tv.setText(msg);
         tv.setVisibility(View.VISIBLE);
+    }
+
+    private static void setDialogButtons(AlertDialog d, boolean enabled) {
+        if (d.getButton(AlertDialog.BUTTON_POSITIVE) != null)
+            d.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(enabled);
+        if (d.getButton(AlertDialog.BUTTON_NEGATIVE) != null)
+            d.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(enabled);
     }
 
     private void setLoading(boolean on) {
@@ -420,17 +444,12 @@ public class SignInActivity extends AppCompatActivity {
         if (tvForgotPassword != null) tvForgotPassword.setEnabled(!on);
     }
 
-    private static void re_enable(AlertDialog dialog) {
-        if (dialog.getButton(AlertDialog.BUTTON_POSITIVE) != null)
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-        if (dialog.getButton(AlertDialog.BUTTON_NEGATIVE) != null)
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
-    }
+    private String getEmail()      { return etEmail    != null && etEmail.getText()    != null ? etEmail.getText().toString().trim() : ""; }
+    private String getPassphrase() { return etPassword != null && etPassword.getText() != null ? etPassword.getText().toString()     : ""; }
 
-    private String getEmail()         { return etEmail        != null && etEmail.getText()        != null ? etEmail.getText().toString().trim()        : ""; }
-    private String getPassphrase()    { return etPassword     != null && etPassword.getText()     != null ? etPassword.getText().toString()            : ""; }
-    private String getRecoveryPhrase(){ return etRecoveryPhrase != null && etRecoveryPhrase.getText() != null ? etRecoveryPhrase.getText().toString() : ""; }
-    private static String text(TextInputEditText et) { return et != null && et.getText() != null ? et.getText().toString().trim() : ""; }
+    private static String text(TextInputEditText et) {
+        return et != null && et.getText() != null ? et.getText().toString().trim() : "";
+    }
 
     private String friendlyError(String raw) {
         if (raw == null) return getString(R.string.error_generic);

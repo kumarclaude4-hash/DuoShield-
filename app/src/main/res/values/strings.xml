@@ -10,17 +10,24 @@
     <string name="sign_up">Create account</string>
     <string name="hint_email">Email address</string>
     <string name="hint_passphrase">Passphrase</string>
-    <string name="hint_recovery_phrase">Recovery passphrase</string>
+    <string name="hint_recovery_code">Recovery code</string>
     <string name="hint_new_passphrase">New passphrase</string>
     <string name="hint_confirm_passphrase">Confirm new passphrase</string>
     <string name="forgot_passphrase">Forgot passphrase?</string>
     <string name="no_account">Don\'t have an account? Sign up</string>
     <string name="have_account">Already have an account? Sign in</string>
-    <string name="recovery_phrase_note">⚠ Write down your recovery passphrase and store it safely. It is the only way to reset your account — there is no email recovery.</string>
+
+    <!-- Recovery code dialog (shown once at signup) -->
+    <string name="recovery_code_title">Save your recovery code</string>
+    <string name="recovery_code_description">This code was generated for your account. It is the only way to reset your passphrase — no email link or OTP will ever be sent. Write it down and store it somewhere safe. It will not be shown again.</string>
+    <string name="copy_recovery_code">Copy code</string>
+    <string name="recovery_code_copied">Recovery code copied</string>
+    <string name="recovery_code_confirm">I have written down my recovery code</string>
+    <string name="recovery_code_continue">Continue</string>
 
     <!-- Passphrase Reset -->
     <string name="reset_passphrase_title">Reset passphrase</string>
-    <string name="reset_passphrase_description">Enter your email and the recovery passphrase you saved when you signed up. No email link or code required.</string>
+    <string name="reset_passphrase_description">Enter your email and the recovery code you saved when you signed up. No email link or OTP required.</string>
     <string name="reset_apply">Reset</string>
     <string name="reset_passphrase_success">Passphrase reset successfully. You are now signed in.</string>
 
@@ -29,12 +36,10 @@
     <string name="error_email_invalid">Enter a valid email address.</string>
     <string name="error_passphrase_required">Passphrase is required.</string>
     <string name="error_passphrase_length">Passphrase must be at least 8 characters.</string>
-    <string name="error_recovery_required">Recovery passphrase is required.</string>
-    <string name="error_recovery_length">Recovery passphrase must be at least 8 characters.</string>
-    <string name="error_recovery_same_as_pass">Recovery passphrase must be different from your login passphrase.</string>
+    <string name="error_recovery_required">Recovery code is required.</string>
     <string name="error_invalid_credentials">Incorrect email or passphrase.</string>
     <string name="error_email_in_use">An account with this email already exists.</string>
-    <string name="error_recovery_wrong">Incorrect recovery passphrase.</string>
+    <string name="error_recovery_wrong">Incorrect recovery code.</string>
     <string name="error_no_recovery_found">No recovery data found for this email.</string>
     <string name="error_recovery_corrupt">Recovery data is missing or corrupted.</string>
     <string name="error_passphrases_no_match">Passphrases do not match.</string>

@@ -108,40 +108,6 @@
                             android:imeOptions="actionNext" />
                     </com.google.android.material.textfield.TextInputLayout>
 
-                    <!-- Recovery passphrase — shown only in sign-up mode -->
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:id="@+id/tilRecoveryPhrase"
-                        style="@style/Widget.DuoShield.TextInput"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:hint="@string/hint_recovery_phrase"
-                        android:visibility="gone"
-                        app:startIconDrawable="@drawable/ic_lock"
-                        app:startIconTint="@color/ds_text_secondary"
-                        app:endIconMode="password_toggle"
-                        app:endIconTint="@color/ds_text_secondary">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/etRecoveryPhrase"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textPassword"
-                            android:textColor="@color/ds_text_primary"
-                            android:imeOptions="actionDone" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <!-- Recovery note — shown only in sign-up mode -->
-                    <TextView
-                        android:id="@+id/tvRecoveryNote"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="@string/recovery_phrase_note"
-                        android:textColor="@color/ds_text_secondary"
-                        android:textSize="12sp"
-                        android:visibility="gone" />
-
                     <!-- Forgot passphrase — hidden in sign-up mode -->
                     <TextView
                         android:id="@+id/tvForgotPassword"

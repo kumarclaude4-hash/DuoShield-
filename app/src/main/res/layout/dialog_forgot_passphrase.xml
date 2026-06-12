@@ -46,7 +46,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:hint="@string/hint_recovery_phrase"
+            android:hint="@string/hint_recovery_code"
             app:startIconDrawable="@drawable/ic_lock"
             app:startIconTint="@color/ds_text_secondary"
             app:endIconMode="password_toggle"
