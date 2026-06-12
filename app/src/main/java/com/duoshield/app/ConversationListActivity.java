@@ -16,7 +16,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.duoshield.app.models.Conversation;
 import com.duoshield.app.ui.ConversationAdapter;
 import com.duoshield.app.util.AppLockManager;
-import com.google.android.material.snackbar.Snackbar;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.ListenerRegistration;
@@ -55,9 +54,12 @@ public class ConversationListActivity extends BaseActivity {
         tvEmpty      = findViewById(R.id.tvEmpty);
         etSearch     = findViewById(R.id.etSearch);
 
-        // Pass myUid (String) — not a List — as the first constructor argument
-        adapter = new ConversationAdapter(myUid, conv -> openChat(conv));
-        adapter.setOnLongClickListener(conv -> {/* optional long-press */ });
+        // OnConversationClickListener has two methods — cannot use a lambda,
+        // must use an anonymous class instead.
+        adapter = new ConversationAdapter(myUid, new ConversationAdapter.OnConversationClickListener() {
+            @Override public void onClick(Conversation conv)     { openChat(conv); }
+            @Override public void onLongClick(Conversation conv) { /* no-op for now */ }
+        });
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setAdapter(adapter);
 

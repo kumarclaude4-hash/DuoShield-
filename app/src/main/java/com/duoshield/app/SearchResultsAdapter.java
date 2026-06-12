@@ -40,8 +40,8 @@ public class SearchResultsAdapter extends RecyclerView.Adapter<SearchResultsAdap
         TextView tvText, tvTime;
         VH(View v) {
             super(v);
-            tvText = v.findViewById(R.id.tvResultText);
-            tvTime = v.findViewById(R.id.tvResultTime);
+            tvText = v.findViewById(R.id.tv_text);
+            tvTime = v.findViewById(R.id.tv_time);
         }
     }
 }
