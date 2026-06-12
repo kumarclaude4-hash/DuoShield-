@@ -163,7 +163,7 @@ public class ChatMediaActivity extends BaseActivity {
         messageInput        = findViewById(R.id.etMessage);
         sendButton          = findViewById(R.id.btnSend);
         uploadButton        = findViewById(R.id.btnAttach);
-        uploadProgress      = findViewById(R.id.uploadProgress);   // may be null — null-checked on use
+        uploadProgress      = null;   // no ProgressBar in layout — all uses null-checked
         recyclerView        = findViewById(R.id.recyclerMessages);
         typingIndicator     = null;
         replyPreviewBar     = findViewById(R.id.replyPreviewBar);
@@ -171,7 +171,7 @@ public class ChatMediaActivity extends BaseActivity {
         cancelReplyBtn      = findViewById(R.id.btnCancelReply);
         pinnedBanner        = findViewById(R.id.pinnedStrip);
         pinnedText          = findViewById(R.id.tvPinnedPreview);
-        pinnedCount         = findViewById(R.id.tvPinnedCount);    // may be null — null-checked on use
+        pinnedCount         = null;   // no count view in layout — all uses null-checked
         pinnedCloseBtn      = findViewById(R.id.btnClosePin);
 
         messages = new ArrayList<>();
