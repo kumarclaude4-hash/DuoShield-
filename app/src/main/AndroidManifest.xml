@@ -1,54 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.duoshield.app">
 
-    <!-- Permissions -->
+    <!-- ── Permissions ────────────────────────────────────── -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
+        android:name=".DuoShieldApp"
         android:allowBackup="false"
+        android:fullBackupContent="false"
         android:label="DuoShield"
+        android:icon="@drawable/ic_shield"
         android:supportsRtl="true"
-        android:theme="@style/Theme.DuoShield">
+        android:theme="@style/Theme.DuoShield"
+        android:usesCleartextTraffic="false">
 
-        <!-- Entry point: goes to Pairing if not paired, else Chat -->
+        <!-- ── LAUNCHER (Sign-In first) ──────────────────── -->
         <activity
-            android:name=".MainActivity"
-            android:exported="true">
+            android:name=".SignInActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- ── Main routing trampoline ────────────────────── -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false" />
+
+        <!-- ── Conversations & Chat ────────────────────────── -->
+        <activity
+            android:name=".ConversationListActivity"
+            android:exported="false" />
 
         <activity
             android:name=".ChatMediaActivity"
             android:windowSoftInputMode="adjustResize"
-            android:exported="false"/>
+            android:exported="false" />
 
+        <!-- ── Security ────────────────────────────────────── -->
+        <activity
+            android:name=".LockScreenActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DuoShield" />
+
+        <!-- ── Pairing & Settings ──────────────────────────── -->
         <activity
             android:name=".ui.PairingActivity"
-            android:exported="false"/>
+            android:exported="false" />
 
         <activity
             android:name=".ui.SettingsActivity"
-            android:exported="false"/>
+            android:exported="false" />
 
-        <!-- FCM service — receives push notifications -->
+        <!-- ── Utility screens ────────────────────────────── -->
+        <activity
+            android:name=".KeyFingerprintActivity"
+            android:exported="false"
+            android:parentActivityName=".ChatMediaActivity" />
+
+        <activity
+            android:name=".FullScreenImageActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DuoShield.FullScreen" />
+
+        <activity
+            android:name=".MediaViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DuoShield.FullScreen" />
+
+        <activity
+            android:name=".MessageSearchActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- ── FCM Push Notifications ─────────────────────── -->
         <service
             android:name=".notifications.DuoShieldMessagingService"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- ── Broadcast Receivers ────────────────────────── -->
+        <receiver
+            android:name=".notifications.MarkReadReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".notifications.MessageReplyReceiver"
+            android:exported="false" />
+
+        <!-- ── FileProvider (for image/PDF sharing) ──────── -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>

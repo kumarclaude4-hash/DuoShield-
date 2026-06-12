@@ -54,25 +54,17 @@ public class MainActivity extends AppCompatActivity {
         if (currentUser != null) {
             route();
         } else {
-            FirebaseAuth.getInstance().signInAnonymously()
-                .addOnCompleteListener(this, task -> {
-                    if (task.isSuccessful()) {
-                        route();
-                    } else {
-                        Toast.makeText(this,
-                            "Connection failed. Check your internet and try again.",
-                            Toast.LENGTH_LONG).show();
-                        finish();
-                    }
-                });
+            // Not signed in → go to sign-in screen
+            startActivity(new Intent(this, SignInActivity.class));
+            finish();
         }
     }
 
     private void route() {
-        // 1. Ensure both AES key (AndroidKeyStore) and EC key pair exist
+        // 1. Ensure crypto keys exist
         CryptoInitializer.ensureKeyExists(this);
 
-        // 2. Notification channel
+        // 2. Notification channels
         NotificationHelper.createChannel(this);
 
         // 3. Refresh FCM token
@@ -92,8 +84,8 @@ public class MainActivity extends AppCompatActivity {
 
         boolean isPaired = prefs.getBoolean("is_paired", false);
         Intent intent = isPaired
-            ? new Intent(this, ChatMediaActivity.class)
-            : new Intent(this, PairingActivity.class);
+            ? new Intent(this, ConversationListActivity.class)
+            : new Intent(this, com.duoshield.app.ui.PairingActivity.class);
 
         startActivity(intent);
         finish();

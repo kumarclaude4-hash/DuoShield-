@@ -1,8 +1,67 @@
 <resources>
     <string name="app_name">DuoShield</string>
+
+    <!-- Auth -->
+    <string name="sign_in">Sign In</string>
+    <string name="sign_in_subtitle">Secure, encrypted messaging</string>
+    <string name="create_account">Create Account</string>
+    <string name="email">Email</string>
+    <string name="password">Password</string>
+    <string name="signing_in">Signing in…</string>
+
+    <!-- Lock screen -->
+    <string name="enter_pin">Enter PIN</string>
+    <string name="duress_hint">Tip: entering your duress PIN will trigger a secure wipe</string>
+    <string name="wrong_pin">Incorrect PIN</string>
+    <string name="too_many_attempts">Too many attempts — data wiped</string>
+
+    <!-- Conversation list -->
+    <string name="no_conversations">No conversations yet</string>
+    <string name="offline">No internet connection</string>
+
+    <!-- Chat -->
     <string name="send">Send</string>
     <string name="attach">Attach</string>
     <string name="record">Record</string>
-    <string name="pair">Pair</string>
+    <string name="type_message">Type a message…</string>
+    <string name="reply_to">Replying to</string>
+    <string name="edited">(edited)</string>
+    <string name="pair">Pair Device</string>
     <string name="chat">Chat</string>
+    <string name="online">online</string>
+    <string name="typing">typing…</string>
+
+    <!-- Search -->
+    <string name="search_messages">Search messages…</string>
+    <string name="no_results">No results found</string>
+
+    <!-- Key Fingerprint -->
+    <string name="key_fingerprint">Key Fingerprint</string>
+    <string name="your_fingerprint">Your Fingerprint</string>
+    <string name="partner_fingerprint">Partner Fingerprint</string>
+    <string name="share_fingerprint">Share My Fingerprint</string>
+
+    <!-- Settings -->
+    <string name="settings">Settings</string>
+    <string name="biometric_lock">Biometric Lock</string>
+    <string name="pin_lock">PIN Lock</string>
+    <string name="self_destruct_timer">Self-Destruct Timer</string>
+    <string name="export_chat">Export Chat (PDF)</string>
+    <string name="quota_summary">Firebase Quota Today</string>
+    <string name="wipe_data">Wipe All Data</string>
+    <string name="wipe_confirm">This will permanently delete all messages. Continue?</string>
+    <string name="cancel">Cancel</string>
+    <string name="confirm">Confirm</string>
+    <string name="ok">OK</string>
+    <string name="delete">Delete</string>
+    <string name="copy">Copy</string>
+    <string name="forward">Forward</string>
+    <string name="pin_message">Pin</string>
+    <string name="unpin">Unpin</string>
+    <string name="react">React</string>
+    <string name="edit">Edit</string>
+    <string name="saving">Saving…</string>
+    <string name="saved">Saved</string>
+    <string name="error_generic">Something went wrong. Please try again.</string>
+    <string name="error_no_network">No network connection</string>
 </resources>

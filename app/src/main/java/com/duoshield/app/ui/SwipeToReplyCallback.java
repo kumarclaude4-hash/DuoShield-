@@ -1,0 +1,63 @@
+package com.duoshield.app.ui;
+
+import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
+import androidx.annotation.NonNull;
+import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.RecyclerView;
+import com.duoshield.app.R;
+
+public abstract class SwipeToReplyCallback
+        extends ItemTouchHelper.SimpleCallback {
+
+    private final Drawable icon;
+    private boolean triggered = false;
+
+    protected SwipeToReplyCallback(Context ctx) {
+        super(0, ItemTouchHelper.RIGHT);
+        icon = ContextCompat.getDrawable(ctx, R.drawable.ic_reply);
+    }
+
+    @Override
+    public boolean onMove(@NonNull RecyclerView rv,
+                          @NonNull RecyclerView.ViewHolder vh,
+                          @NonNull RecyclerView.ViewHolder target) { return false; }
+
+    @Override
+    public float getSwipeThreshold(@NonNull RecyclerView.ViewHolder vh) { return 0.25f; }
+
+    @Override
+    public void onChildDraw(@NonNull Canvas c,
+                            @NonNull RecyclerView rv,
+                            @NonNull RecyclerView.ViewHolder vh,
+                            float dX, float dY, int state, boolean active) {
+        android.view.View itemView = vh.itemView;
+        if (dX > 0 && icon != null) {
+            int margin = (itemView.getHeight() - icon.getIntrinsicHeight()) / 2;
+            int top    = itemView.getTop()  + margin;
+            int bottom = itemView.getBottom() - margin;
+            int left   = itemView.getLeft() + margin;
+            int right  = left + icon.getIntrinsicWidth();
+            float alpha = Math.min(1f, dX / (itemView.getWidth() * 0.25f));
+            icon.setAlpha((int)(alpha * 255));
+            icon.setBounds(left, top, right, bottom);
+            icon.draw(c);
+
+            if (!triggered && dX > itemView.getWidth() * 0.25f) {
+                triggered = true;
+                onSwipeTriggered(vh.getAdapterPosition());
+            }
+        }
+        super.onChildDraw(c, rv, vh, dX, dY, state, active);
+    }
+
+    @Override
+    public void clearView(@NonNull RecyclerView rv, @NonNull RecyclerView.ViewHolder vh) {
+        super.clearView(rv, vh);
+        triggered = false;
+    }
+
+    public abstract void onSwipeTriggered(int adapterPosition);
+}

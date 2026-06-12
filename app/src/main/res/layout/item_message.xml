@@ -156,14 +156,39 @@
                   </LinearLayout>
               </LinearLayout>
 
-              <ImageView
-                  android:id="@+id/tickIcon"
-                  android:layout_width="18dp"
-                  android:layout_height="18dp"
-                  android:layout_gravity="end"
-                  android:layout_marginTop="4dp"
-                  android:visibility="gone"
-                  android:contentDescription="Status"/>
+              <!-- Bottom row: timestamp + edited + tick -->
+              <LinearLayout
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="horizontal"
+                  android:gravity="end|center_vertical"
+                  android:layout_marginTop="4dp">
+
+                  <TextView
+                      android:id="@+id/editedLabel"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="@string/edited"
+                      android:textSize="10sp"
+                      android:textColor="@color/text_secondary"
+                      android:layout_marginEnd="4dp"
+                      android:visibility="gone" />
+
+                  <TextView
+                      android:id="@+id/messageTimestamp"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:textSize="10sp"
+                      android:textColor="@color/text_secondary"
+                      android:layout_marginEnd="4dp" />
+
+                  <ImageView
+                      android:id="@+id/tickIcon"
+                      android:layout_width="16dp"
+                      android:layout_height="16dp"
+                      android:visibility="gone"
+                      android:contentDescription="Status" />
+              </LinearLayout>
 
           </LinearLayout>
       </androidx.cardview.widget.CardView>

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp">
+
+    <ImageView
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:src="@drawable/ic_shield"
+        android:layout_marginBottom="32dp"
+        android:contentDescription="DuoShield" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/enter_pin"
+        android:textColor="@color/text_primary"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp" />
+
+    <EditText
+        android:id="@+id/etPin"
+        android:layout_width="200dp"
+        android:layout_height="56dp"
+        android:inputType="numberPassword"
+        android:maxLength="6"
+        android:hint="● ● ● ●"
+        android:textColorHint="@color/text_hint"
+        android:textColor="@color/text_primary"
+        android:textSize="22sp"
+        android:gravity="center"
+        android:background="@drawable/bg_input_field"
+        android:padding="12dp"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:id="@+id/tvError"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/error_red"
+        android:textSize="13sp"
+        android:layout_marginBottom="24dp"
+        android:visibility="gone" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnUnlock"
+        android:layout_width="200dp"
+        android:layout_height="52dp"
+        android:text="Unlock"
+        android:layout_marginBottom="12dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnBiometric"
+        android:layout_width="200dp"
+        android:layout_height="52dp"
+        android:text="Use Biometric"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:textColor="@color/accent" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/duress_hint"
+        android:textColor="@color/text_hint"
+        android:textSize="12sp"
+        android:gravity="center"
+        android:layout_marginTop="24dp" />
+
+</LinearLayout>

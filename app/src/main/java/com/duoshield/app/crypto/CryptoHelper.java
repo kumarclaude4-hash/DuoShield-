@@ -32,12 +32,33 @@ public class CryptoHelper {
     }
 
     public static String decrypt(String encrypted, SecretKey key) throws Exception {
-        byte[] decoded = Base64.getDecoder().decode(encrypted);
+        // Decode Base64
+        byte[] decoded;
+        try {
+            decoded = Base64.getDecoder().decode(encrypted);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid Base64 encoded data", e);
+        }
+        
+        // Validate minimum length (IV_SIZE + at least 1 byte of ciphertext)
+        if (decoded.length < IV_SIZE + 1) {
+            throw new IllegalArgumentException("Invalid encrypted data: too short (< " + (IV_SIZE + 1) + " bytes)");
+        }
+        
+        // Extract IV
         byte[] iv = new byte[IV_SIZE];
         System.arraycopy(decoded, 0, iv, 0, iv.length);
+        
+        // Decrypt
         Cipher cipher = Cipher.getInstance(ALGO);
-        cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_SIZE, iv));
-        byte[] plainText = cipher.doFinal(decoded, iv.length, decoded.length - iv.length);
-        return new String(plainText);
+        try {
+            cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_SIZE, iv));
+            byte[] plainText = cipher.doFinal(decoded, iv.length, decoded.length - iv.length);
+            return new String(plainText);
+        } catch (javax.crypto.AEADBadTagException e) {
+            throw new RuntimeException("Decryption failed: data is corrupted or tampered with", e);
+        } catch (Exception e) {
+            throw new RuntimeException("Decryption failed: " + e.getMessage(), e);
+        }
     }
 }

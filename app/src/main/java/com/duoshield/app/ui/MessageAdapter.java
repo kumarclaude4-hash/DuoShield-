@@ -29,7 +29,7 @@ package com.duoshield.app.ui;
       public interface OnVoicePlayListener       { void onVoicePlay(Message m); }
       public interface OnMessageLongPressListener { void onLongPress(Message m, View anchor); }
 
-      private final List<Message>               messages;
+      private List<Message>                     messages;
       private final String                      myUid;
       private final OnVoicePlayListener         voiceListener;
       private final OnMessageLongPressListener  longPressListener;
@@ -37,8 +37,33 @@ package com.duoshield.app.ui;
 
       public MessageAdapter(List<Message> messages, String myUid,
                             OnVoicePlayListener vl, OnMessageLongPressListener ll) {
-          this.messages = messages; this.myUid = myUid;
+          this.messages = messages != null ? messages : new java.util.ArrayList<>();
+          this.myUid = myUid;
           this.voiceListener = vl; this.longPressListener = ll;
+      }
+
+      public void setMessages(List<Message> newList) {
+          if (newList == null) newList = new java.util.ArrayList<>();
+          final List<Message> oldList = messages;
+          final List<Message> finalNew = newList;
+          androidx.recyclerview.widget.DiffUtil.DiffResult diff =
+              androidx.recyclerview.widget.DiffUtil.calculateDiff(new androidx.recyclerview.widget.DiffUtil.Callback() {
+                  @Override public int getOldListSize() { return oldList.size(); }
+                  @Override public int getNewListSize() { return finalNew.size(); }
+                  @Override public boolean areItemsTheSame(int o, int n) {
+                      return oldList.get(o).getId() != null
+                          && oldList.get(o).getId().equals(finalNew.get(n).getId());
+                  }
+                  @Override public boolean areContentsTheSame(int o, int n) {
+                      Message a = oldList.get(o), b = finalNew.get(n);
+                      return safeEq(a.getText(), b.getText())
+                          && safeEq(a.getStatus(), b.getStatus())
+                          && a.isEdited() == b.isEdited()
+                          && safeEq(a.getReaction(), b.getReaction());
+                  }
+              });
+          messages = finalNew;
+          diff.dispatchUpdatesTo(this);
       }
 
       /** Called from ChatMediaActivity whenever the pinned set changes. */
@@ -46,6 +71,12 @@ package com.duoshield.app.ui;
           pinnedIds.clear();
           if (ids != null) pinnedIds.addAll(ids);
           notifyDataSetChanged();
+      }
+
+      private static boolean safeEq(String a, String b) {
+          if (a == null && b == null) return true;
+          if (a == null || b == null) return false;
+          return a.equals(b);
       }
 
       @NonNull @Override
@@ -120,15 +151,12 @@ package com.duoshield.app.ui;
               h.textView.setText(msg.getText());
           }
 
-          // Ticks
-          if (mine) {
-              h.tickIcon.setVisibility(View.VISIBLE);
-              if      (msg.isSeen())      h.tickIcon.setImageResource(R.drawable.ic_tick_double_blue);
-              else if (msg.isDelivered()) h.tickIcon.setImageResource(R.drawable.ic_tick_double);
-              else                        h.tickIcon.setImageResource(R.drawable.ic_tick_single);
-          } else {
-              h.tickIcon.setVisibility(View.GONE);
-          }
+          // Edited label
+          if (h.editedLabel != null)
+              h.editedLabel.setVisibility(msg.isEdited() ? View.VISIBLE : View.GONE);
+
+          // Ticks — driven by status field
+          com.duoshield.app.util.MessageStatusHelper.bind(h.tickIcon, msg, myUid != null ? myUid : "");
 
           // Reaction
           String reaction = msg.getReaction();
@@ -146,7 +174,8 @@ package com.duoshield.app.ui;
       @Override public int getItemCount() { return messages.size(); }
 
       static class MessageViewHolder extends RecyclerView.ViewHolder {
-          TextView  senderLabel, textView, cardName, cardUid, replyPreviewText, reactionText, pinIndicator;
+          TextView  senderLabel, textView, cardName, cardUid, replyPreviewText,
+                    reactionText, pinIndicator, editedLabel, timestampView;
           ImageView imageView, videoThumbnail, videoPlayBtn, tickIcon;
           CardView  bubbleCard;
           View      videoContainer, contactCardContainer, replyPreviewContainer;
@@ -170,6 +199,8 @@ package com.duoshield.app.ui;
               replyPreviewContainer = v.findViewById(R.id.replyPreviewContainer);
               replyPreviewText      = v.findViewById(R.id.replyPreviewText);
               reactionText          = v.findViewById(R.id.reactionText);
+              editedLabel           = v.findViewById(R.id.editedLabel);
+              timestampView         = v.findViewById(R.id.messageTimestamp);
           }
       }
   }
