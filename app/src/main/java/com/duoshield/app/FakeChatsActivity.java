@@ -36,7 +36,7 @@ public class FakeChatsActivity extends BaseActivity {
         rv.setAdapter(new DecoyAdapter(buildFakeData()));
     }
 
-    @Override public void onBackPressed() { finish(); }
+    @Override public void onBackPressed() { super.onBackPressed(); finish(); }
 
     // ── Fake data ─────────────────────────────────────────────────────────────
 
