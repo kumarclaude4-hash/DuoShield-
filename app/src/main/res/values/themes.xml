@@ -14,10 +14,9 @@
         <item name="colorOnSecondary">@color/ds_text_on_accent</item>
         <item name="colorSurface">@color/ds_surface</item>
         <item name="colorOnSurface">@color/ds_text_primary</item>
-        <item name="colorBackground">@color/ds_background</item>
-        <item name="colorOnBackground">@color/ds_text_primary</item>
         <item name="colorError">@color/ds_danger</item>
         <item name="colorOnError">@color/ds_text_on_accent</item>
+        <!-- android:colorBackground covers the window/view background -->
         <item name="android:colorBackground">@color/ds_background</item>
         <item name="android:windowBackground">@color/ds_background</item>
 
