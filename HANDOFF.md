@@ -292,21 +292,27 @@ Implemented in `MessageStatusHelper.bind(tickIcon, msg, myUid)`.
 ---
 
 ## Completed in This Session ✅
+
+### Security / PIN / Duress fixes
+- **`BiometricHelper.java`** — removed `DEVICE_CREDENTIAL` from allowed authenticators; now uses `BIOMETRIC_STRONG` only with `setNegativeButtonText("Use PIN instead")`. Phone's system PIN/password is no longer used as an app fallback. If biometric unavailable/dismissed, `onFailure()` is called so `LockScreenActivity` shows the in-app PIN field. Added `isAvailable(Context)` helper.
+- **`LockScreenActivity.java`** — added 5-attempt fail counter: wrong PIN 5× triggers `WipeHelper.wipeAll()`; remaining-attempts message displayed after each failure. Biometric button only shown if `biometric_enabled` AND biometric is actually enrolled. If no app PIN is set, the lock screen skips itself immediately.
+- **`activity_settings.xml`** — added **App PIN** section (above biometric section) with `etNewPin`, `etConfirmPin`, `btnSetPin`, `btnClearPin`, and `tvPinStatus`. Rewrote layout to use `@style/SectionHeader` and `@style/Divider` from themes.xml.
+- **`SettingsActivity.java`** — wired app PIN setup: validates 4–6 digits, checks PINs match, prevents app PIN == duress PIN, calls `PinManager.setPin()`. Clear PIN: dialog-confirmed, also disables biometric switch. Duress PIN: validates 4–6 digits, prevents duress == app PIN. Biometric switch: refuses to enable if no app PIN set or no biometric enrolled. Fixed duress description ("at the lock screen instead of your app PIN").
+- **`themes.xml`** — added `@style/SectionHeader` and `@style/Divider` reusable styles for settings layout.
+
+### Previous session
 - All 85 Java files across all packages
 - All 14 layouts (IDs reconciled with activities)
 - 38 drawables including `ic_launcher_foreground.xml`
 - 7 anim files: `slide_in_right`, `slide_out_left`, `slide_in_left`, `slide_out_right`, `fade_in`, `fade_out`, `scale_in`
-- Adaptive launcher icon: `mipmap-anydpi-v26/ic_launcher.xml` + `ic_launcher_round.xml`; `ic_launcher_background` color (`#0D1B2A`)
+- Adaptive launcher icon: `mipmap-anydpi-v26/ic_launcher.xml` + `ic_launcher_round.xml`
 - Manifest updated: `@mipmap/ic_launcher` + `android:roundIcon`
 - `themes.xml`: added `WindowAnimation.DuoShield` for global slide transitions
 - `proguard-rules.pro`: added PhotoView + security-crypto rules
-- `BaseActivity`: added `navigateTo()` / `navigateBack()` with transition overrides; `onStop()` lock flag
-- `ChatMediaActivity`: now extends `BaseActivity`; `ListenerRegistration` import added; `msgListener` + `convListener` fields stored; `onStop()` detaches both listeners and clears typing state
-- `PairingActivity` + `SettingsActivity`: now extend `BaseActivity` (FLAG_SECURE inherited)
-- `ConversationListActivity`: confirmed — uses `setConversations()`, `TextWatcher` for search, detaches listener in `onStop()`
-- `MarkReadReceiver`: confirmed — calls `NotificationManagerCompat.cancel(NOTIF_ID)` after marking read
-- `colors_bubbles.xml`: emptied (was duplicating `bubble_mine`/`bubble_theirs` from `colors.xml`)
-- `.replit` secrets leak: both exposed PATs removed; user warned to revoke and use Replit Secrets tab (not env vars) for future tokens
+- `BaseActivity`: `navigateTo()` / `navigateBack()` with transition overrides
+- `ChatMediaActivity`: extends `BaseActivity`; `msgListener`/`convListener` detached in `onStop()`
+- `PairingActivity` + `SettingsActivity`: extend `BaseActivity` (FLAG_SECURE inherited)
+- `colors_bubbles.xml`: emptied (deduplication)
 
 ---
 

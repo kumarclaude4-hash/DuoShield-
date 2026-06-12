@@ -13,40 +13,26 @@ import java.util.concurrent.Executor;
 
 public class BiometricHelper {
 
-    // ── Callback interface ────────────────────────────────────────────────────
-
     public interface AuthCallback {
         void onSuccess();
-        void onFailure();
+        void onFailure(); // biometric unavailable or user chose "Use PIN"
     }
 
-    // ── Authenticate ──────────────────────────────────────────────────────────
-
     /**
-     * Shows a biometric prompt for the given activity.
-     *
-     * Allowed authenticators: BIOMETRIC_STRONG | DEVICE_CREDENTIAL
-     * This means the user can also use their PIN/pattern/password as fallback.
-     *
-     * If no biometric or device credential is enrolled, or the hardware is absent,
-     * onSuccess is called immediately so the app doesn't lock the user out.
-     *
-     * API level note: DEVICE_CREDENTIAL as a standalone authenticator requires API 30+.
-     * For API 28-29 we use BIOMETRIC_WEAK | DEVICE_CREDENTIAL (covers enrolled biometrics
-     * and falls back gracefully). minSdk is 26, so we handle the range explicitly.
+     * Shows a biometric-ONLY prompt (fingerprint / face).
+     * Does NOT fall back to the device/phone PIN — DuoShield has its own app PIN for that.
+     * If the user taps "Use PIN" or biometric is unavailable, onFailure() is called
+     * so the caller can show the in-app PIN entry screen instead.
      */
     public static void authenticate(FragmentActivity activity, AuthCallback callback) {
-        int allowedAuthenticators = resolveAuthenticators();
-
-        // Check hardware/enrollment status before showing the prompt
-        BiometricManager biometricManager = BiometricManager.from(activity);
-        int canAuth = biometricManager.canAuthenticate(allowedAuthenticators);
+        BiometricManager bm = BiometricManager.from(activity);
+        int canAuth = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG);
 
         if (canAuth == BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
                 || canAuth == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED
                 || canAuth == BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE) {
-            // No biometric capability — skip the gate, proceed directly to chat
-            callback.onSuccess();
+            // No biometric hardware or nothing enrolled — let the app PIN handle it
+            callback.onFailure();
             return;
         }
 
@@ -63,39 +49,30 @@ public class BiometricHelper {
                     @Override
                     public void onAuthenticationError(int errorCode,
                                                       @NonNull CharSequence errString) {
-                        // User cancelled or too many attempts — send them back
+                        // User tapped "Use PIN" or dismissed — fall back to app PIN
                         callback.onFailure();
                     }
 
                     @Override
                     public void onAuthenticationFailed() {
-                        // Single failed attempt — BiometricPrompt handles retry UI;
-                        // we only act on final error/success callbacks.
+                        // Single bad attempt — BiometricPrompt shows retry UI automatically
                     }
                 });
 
         BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
                 .setTitle("DuoShield")
-                .setSubtitle("Verify your identity to access messages")
-                .setAllowedAuthenticators(allowedAuthenticators)
+                .setSubtitle("Use fingerprint or face to unlock")
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .setNegativeButtonText("Use PIN instead")
                 .build();
-        // Note: setNegativeButtonText is mutually exclusive with DEVICE_CREDENTIAL.
-        // When DEVICE_CREDENTIAL is included the system provides its own cancel flow.
 
         prompt.authenticate(promptInfo);
     }
 
-    // ── Pick authenticators by API level ─────────────────────────────────────
-
-    private static int resolveAuthenticators() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // API 30+: BIOMETRIC_STRONG | DEVICE_CREDENTIAL is fully supported
-            return BiometricManager.Authenticators.BIOMETRIC_STRONG
-                    | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
-        } else {
-            // API 26-29: use BIOMETRIC_WEAK | DEVICE_CREDENTIAL for broader compat
-            return BiometricManager.Authenticators.BIOMETRIC_WEAK
-                    | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
-        }
+    /** Returns true if the device has enrolled biometrics that can authenticate. */
+    public static boolean isAvailable(Context context) {
+        int canAuth = BiometricManager.from(context)
+                .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG);
+        return canAuth == BiometricManager.BIOMETRIC_SUCCESS;
     }
 }
