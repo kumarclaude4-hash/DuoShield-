@@ -58,6 +58,12 @@
             android:exported="false"
             android:theme="@style/Theme.DuoShield" />
 
+        <!-- ── Decoy / plausible-deniability screen ───────── -->
+        <activity
+            android:name=".FakeChatsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DuoShield" />
+
         <!-- ── Pairing & Settings ──────────────────────────── -->
         <activity
             android:name=".ui.PairingActivity"

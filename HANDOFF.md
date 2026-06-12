@@ -293,6 +293,12 @@ Implemented in `MessageStatusHelper.bind(tickIcon, msg, myUid)`.
 
 ## Completed in This Session ✅
 
+### Plausible-deniability decoy chats (wrong PIN)
+- **`FakeChatsActivity.java`** — standalone activity with 10 hardcoded innocent-looking fake conversations (Mom, Alex, Work Group, etc.). Shown whenever a wrong PIN is entered. No real data is ever loaded. Extends `BaseActivity` for FLAG_SECURE.
+- **`activity_fake_chats.xml`** + **`item_decoy_conversation.xml`** — Toolbar + RecyclerView layout for the decoy screen; item shows avatar circle (initials), name, preview, timestamp — identical structure to real conversation list.
+- **`LockScreenActivity.java`** — wrong PIN now triggers shake animation (550 ms), then launches `FakeChatsActivity` with `FLAG_ACTIVITY_CLEAR_TASK` (no back-stack escape to real chats). Removed 5-attempt wipe logic. Correct PIN → real unlock. Duress PIN → silent wipe (unchanged).
+- **`AndroidManifest.xml`** — registered `FakeChatsActivity` as non-exported.
+
 ### Wrong-PIN shake animation
 - **`res/anim/shake.xml`** + **`res/anim/shake_interpolator.xml`** — `cycleInterpolator` (3 cycles, 500 ms) drives a horizontal translate on the PIN `EditText` every time a wrong PIN is entered.
 - **`LockScreenActivity.java`** — `AnimationUtils.loadAnimation(this, R.anim.shake)` + `etPin.startAnimation(shake)` called immediately after `HapticHelper.wrongPin()`.

@@ -15,16 +15,12 @@ import com.duoshield.app.security.DuressManager;
 import com.duoshield.app.util.AppLockManager;
 import com.duoshield.app.util.HapticHelper;
 import com.duoshield.app.util.PinManager;
-import com.duoshield.app.util.WipeHelper;
 
 public class LockScreenActivity extends AppCompatActivity {
-
-    private static final int MAX_ATTEMPTS = 5;
 
     private EditText etPin;
     private TextView tvError;
     private Button   btnUnlock, btnBiometric;
-    private int      failedAttempts = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,7 +42,7 @@ public class LockScreenActivity extends AppCompatActivity {
             return;
         }
 
-        // Only show biometric button if biometrics are enrolled and feature is enabled
+        // Only show biometric button if enabled and hardware is enrolled
         boolean bioEnabled = getSharedPreferences("duoshield_prefs", MODE_PRIVATE)
                 .getBoolean("biometric_enabled", false);
         if (bioEnabled && BiometricHelper.isAvailable(this)) {
@@ -59,7 +55,6 @@ public class LockScreenActivity extends AppCompatActivity {
         btnUnlock.setOnClickListener(v -> checkPin());
         btnBiometric.setOnClickListener(v -> showBiometric());
 
-        // Allow PIN entry on keyboard "done"
         etPin.setOnEditorActionListener((v, actionId, event) -> {
             checkPin();
             return true;
@@ -69,10 +64,7 @@ public class LockScreenActivity extends AppCompatActivity {
     private void showBiometric() {
         BiometricHelper.authenticate(this, new BiometricHelper.AuthCallback() {
             @Override public void onSuccess() { unlock(); }
-            @Override public void onFailure() {
-                // Biometric unavailable or user tapped "Use PIN" — focus PIN field
-                etPin.requestFocus();
-            }
+            @Override public void onFailure() { etPin.requestFocus(); }
         });
     }
 
@@ -84,36 +76,27 @@ public class LockScreenActivity extends AppCompatActivity {
             return;
         }
 
-        // Duress PIN check — must happen before normal PIN check
+        // Duress PIN → silent wipe
         if (DuressManager.isDuressPin(this, entered)) {
             DuressManager.triggerDuress(this);
             return;
         }
 
+        // Correct app PIN → real unlock
         if (PinManager.verifyPin(this, entered)) {
-            failedAttempts = 0;
             unlock();
-        } else {
-            failedAttempts++;
-            HapticHelper.wrongPin(this);
-            Animation shake = AnimationUtils.loadAnimation(this, R.anim.shake);
-            etPin.startAnimation(shake);
-            etPin.setText("");
-
-            int remaining = MAX_ATTEMPTS - failedAttempts;
-            if (remaining <= 0) {
-                // Too many wrong attempts — wipe everything
-                tvError.setText("Too many wrong attempts. Wiping data…");
-                tvError.setVisibility(View.VISIBLE);
-                btnUnlock.setEnabled(false);
-                etPin.setEnabled(false);
-                etPin.postDelayed(() -> WipeHelper.wipeAll(this), 1500);
-            } else {
-                tvError.setText("Wrong PIN. " + remaining + " attempt"
-                        + (remaining == 1 ? "" : "s") + " remaining.");
-                tvError.setVisibility(View.VISIBLE);
-            }
+            return;
         }
+
+        // Wrong PIN → shake + open decoy chats (plausible deniability)
+        HapticHelper.wrongPin(this);
+        Animation shake = AnimationUtils.loadAnimation(this, R.anim.shake);
+        etPin.startAnimation(shake);
+        etPin.setText("");
+        tvError.setVisibility(View.GONE);
+
+        // Short delay so the shake finishes before transitioning
+        etPin.postDelayed(() -> openDecoyChats(), 550);
     }
 
     private void unlock() {
@@ -121,7 +104,15 @@ public class LockScreenActivity extends AppCompatActivity {
         finish();
     }
 
+    private void openDecoyChats() {
+        AppLockManager.onAppForegrounded(this);
+        Intent i = new Intent(this, FakeChatsActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(i);
+        finish();
+    }
+
     @Override public void onBackPressed() {
-        // Block back — user must authenticate to proceed
+        // Block back — user must authenticate
     }
 }
