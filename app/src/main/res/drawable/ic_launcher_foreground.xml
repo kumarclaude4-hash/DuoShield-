@@ -22,25 +22,21 @@
         android:fillColor="#00000000"
         android:pathData="M45,50 L45,44 A9,9 0 0,1 63,44 L63,50" />
 
-    <!-- Lock body -->
-    <rect
+    <!-- Lock body (rounded rectangle) -->
+    <path
         android:fillColor="#FFFFFF"
-        android:left="42"
-        android:top="50"
-        android:right="66"
-        android:bottom="64"
-        android:rx="3" />
+        android:pathData="M45,50 L63,50 C64.1,50 65,50.9 65,52 L65,62 C65,63.1 64.1,64 63,64 L45,64 C43.9,64 43,63.1 43,62 L43,52 C43,50.9 43.9,50 45,50 Z" />
 
-    <!-- Lock keyhole -->
-    <circle
+    <!-- Lock keyhole circle -->
+    <path
         android:fillColor="#2AABB8"
-        android:cx="54"
-        android:cy="56"
-        android:r="3.5" />
+        android:pathData="M54,53 C55.1,53 56,53.9 56,55 C56,56.1 55.1,57 54,57 C52.9,57 52,56.1 52,55 C52,53.9 52.9,53 54,53 Z" />
+
+    <!-- Lock keyhole stem -->
     <rect
         android:fillColor="#2AABB8"
         android:left="52"
-        android:top="56"
+        android:top="57"
         android:right="56"
         android:bottom="62" />
 </vector>
