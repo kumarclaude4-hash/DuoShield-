@@ -5,6 +5,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.annotation.SuppressLint;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -35,6 +36,7 @@ public class NotificationStyler {
         nm.createNotificationChannel(silent);
     }
 
+    @SuppressLint("MissingPermission")
     public static void showMessage(Context ctx, String title, String body,
                                    String convId, String myUid) {
         try {
@@ -77,3 +79,4 @@ public class NotificationStyler {
         } catch (Exception ignored) {}
     }
 }
+
