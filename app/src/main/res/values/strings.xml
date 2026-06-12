@@ -121,6 +121,20 @@
     <string name="share_image">Share image</string>
     <string name="download">Download</string>
 
+    <!-- Password Reset -->
+    <string name="reset_password_title">Reset password</string>
+    <string name="reset_password_message">Enter your email address and we\'ll send you a link to reset your password. No code required.</string>
+    <string name="reset_send">Send link</string>
+    <string name="reset_password_sent">A password reset link has been sent to %s.\n\nCheck your inbox and follow the link to set a new password.</string>
+
+    <!-- Auth errors -->
+    <string name="error_email_required">Email address is required.</string>
+    <string name="error_email_invalid">Enter a valid email address.</string>
+    <string name="error_password_required">Password is required.</string>
+    <string name="error_password_length">Password must be at least 6 characters.</string>
+    <string name="error_invalid_credentials">Incorrect email or password.</string>
+    <string name="error_email_in_use">An account with this email already exists.</string>
+
     <!-- Common -->
     <string name="ok">OK</string>
     <string name="cancel">Cancel</string>
