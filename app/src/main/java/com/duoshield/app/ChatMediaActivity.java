@@ -43,6 +43,7 @@ package com.duoshield.app;
   import com.google.firebase.firestore.DocumentChange;
   import com.google.firebase.firestore.FieldValue;
   import com.google.firebase.firestore.FirebaseFirestore;
+  import com.google.firebase.firestore.ListenerRegistration;
   import com.google.firebase.storage.FirebaseStorage;
   import com.google.firebase.storage.StorageReference;
 
@@ -66,7 +67,7 @@ package com.duoshield.app;
 
   import javax.crypto.SecretKey;
 
-  public class ChatMediaActivity extends AppCompatActivity {
+  public class ChatMediaActivity extends BaseActivity {
 
       private static final String TAG          = "ChatMediaActivity";
       private static final String FCM_ENDPOINT =
@@ -112,6 +113,9 @@ package com.duoshield.app;
       private String partnerUid;
 
       private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor();
+
+      private ListenerRegistration msgListener;
+      private ListenerRegistration convListener;
 
       private final ActivityResultLauncher<String> pickImageLauncher =
           registerForActivityResult(new ActivityResultContracts.GetContent(),
@@ -216,12 +220,24 @@ package com.duoshield.app;
           applyWallpaper();
       }
 
+      @Override protected void onStop() {
+          super.onStop();
+          if (msgListener  != null) { msgListener.remove();  msgListener  = null; }
+          if (convListener != null) { convListener.remove(); convListener = null; }
+          typingHandler.removeCallbacksAndMessages(null);
+          if (isTyping && conversationId != null && myUid != null) {
+              db.collection("conversations").document(conversationId)
+                .update("typing_" + myUid, false);
+              isTyping = false;
+          }
+      }
+
       // ══════════════════════════════════════════════════════════════
       // MESSAGE PINNING
       // ══════════════════════════════════════════════════════════════
 
       private void listenForPins() {
-          db.collection("conversations").document(conversationId)
+          convListener = db.collection("conversations").document(conversationId)
             .addSnapshotListener((snap, e) -> {
                 if (snap == null) return;
 
@@ -605,7 +621,7 @@ package com.duoshield.app;
       }
 
       private void listenForMessages() {
-          db.collection("conversations").document(conversationId)
+          msgListener = db.collection("conversations").document(conversationId)
             .collection("messages").orderBy("timestamp")
             .addSnapshotListener((snaps, e) -> {
                 if (snaps == null) return;

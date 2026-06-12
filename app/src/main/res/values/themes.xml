@@ -15,6 +15,15 @@
         <item name="android:textColorPrimary">@color/text_primary</item>
         <item name="android:textColorSecondary">@color/text_secondary</item>
         <item name="android:textColorHint">@color/text_hint</item>
+        <!-- Global activity transition animations -->
+        <item name="android:windowAnimationStyle">@style/WindowAnimation.DuoShield</item>
+    </style>
+
+    <style name="WindowAnimation.DuoShield" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/slide_in_right</item>
+        <item name="android:activityOpenExitAnimation">@anim/slide_out_left</item>
+        <item name="android:activityCloseEnterAnimation">@anim/slide_in_left</item>
+        <item name="android:activityCloseExitAnimation">@anim/slide_out_right</item>
     </style>
 
     <style name="Theme.DuoShield.FullScreen" parent="Theme.DuoShield">

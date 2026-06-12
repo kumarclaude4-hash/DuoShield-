@@ -11,7 +11,7 @@ package com.duoshield.app.ui;
   import android.widget.TextView;
   import android.widget.Toast;
   import androidx.appcompat.app.AlertDialog;
-  import androidx.appcompat.app.AppCompatActivity;
+  import com.duoshield.app.BaseActivity;
   import androidx.appcompat.app.AppCompatDelegate;
   import androidx.appcompat.widget.SwitchCompat;
   import androidx.appcompat.widget.Toolbar;
@@ -28,7 +28,7 @@ package com.duoshield.app.ui;
   import java.util.concurrent.Executors;
   import java.util.concurrent.TimeUnit;
 
-  public class SettingsActivity extends AppCompatActivity {
+  public class SettingsActivity extends BaseActivity {
 
       private static final String TAG             = "SettingsActivity";
       private static final String WORK_TAG        = "self_destruct_work";

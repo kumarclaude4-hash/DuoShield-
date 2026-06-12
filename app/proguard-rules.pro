@@ -69,6 +69,14 @@
 -dontwarn org.apache.http.**
 -dontwarn com.google.android.gms.**
 
+# ── PhotoView (JitPack) ──────────────────────────────────────
+-keep class com.github.chrisbanes.photoview.** { *; }
+-dontwarn com.github.chrisbanes.photoview.**
+
+# ── Security Crypto (EncryptedSharedPreferences) ─────────────
+-keep class androidx.security.crypto.** { *; }
+-dontwarn androidx.security.crypto.**
+
 # ── Keep source file names for crash reporting ───────────────
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile

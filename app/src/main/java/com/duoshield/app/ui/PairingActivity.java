@@ -7,13 +7,13 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import androidx.appcompat.app.AppCompatActivity;
+import com.duoshield.app.BaseActivity;
 import com.duoshield.app.ChatMediaActivity;
 import com.duoshield.app.R;
 import com.duoshield.app.pairing.PairingManager;
 import com.duoshield.app.security.DuressManager;
 
-public class PairingActivity extends AppCompatActivity {
+public class PairingActivity extends BaseActivity {
 
     private PairingManager pairingManager;
 

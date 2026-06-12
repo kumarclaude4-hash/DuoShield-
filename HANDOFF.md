@@ -281,22 +281,32 @@ Implemented in `MessageStatusHelper.bind(tickIcon, msg, myUid)`.
 
 ## What Still Needs To Be Done
 
-### High Priority (needed for full APK build)
-1. **`google-services.json`** — must be placed at `app/google-services.json`. Not in the repo (credentials). Download from Firebase console for project `duoshield-8caf1`.
-2. **Verify `ChatMediaActivity.java`** completely uses `adapter.setMessages()` (not `notifyDataSetChanged()`) and detaches its Firestore listener in `onStop()`.
-3. **Verify `ConversationListActivity.java`** fully populates `ConversationAdapter` and handles the `etSearch` filter correctly.
-4. **Verify `SettingsActivity.java`** handles: biometric toggle, PIN set, self-destruct timer, export (calls `ExportHelper`), wipe (calls `WipeHelper`), quota display (calls `FirebaseQuotaSummary`).
+### Critical (can't compile without this)
+1. **`google-services.json`** — must be placed at `app/google-services.json`. Download from Firebase console for project `duoshield-8caf1`. This file is never committed to git.
 
-### Medium Priority
-5. **Animations** — `res/anim/` is empty. Needed: `slide_in_right.xml`, `slide_out_left.xml`, `fade_in.xml`, `fade_out.xml` for Activity transitions.
-6. **Voice Note UI** — `ChatMediaActivity` references `VoiceRecorderHelper` and `VoiceMessagePlayer` — verify waveform/amplitude UI is wired up.
-7. **Launcher icon** — `ic_shield.xml` is being used as `android:icon` but should be a proper `mipmap` adaptive icon set for production.
-8. **ProGuard rules** — `proguard-rules.pro` needs rules for Room, Firebase, Glide, PhotoView.
+### Remaining Features
+2. **Voice Note waveform UI** — `ChatMediaActivity` calls `VoiceRecorderHelper.start()` and `VoiceMessagePlayer.play()` but the waveform amplitude visualizer view in the layout needs wiring.
+3. **Launcher badge count** — unread count badge on app icon via NotificationCompat badges (Android O+).
+4. **Unit tests** — `app/src/test/` and `app/src/androidTest/` are empty.
 
-### Lower Priority
-9. **`MarkReadReceiver` notification dismiss** — after marking read, cancel the notification.
-10. **Launcher badge count** — unread count badge on app icon (ShortcutBadger or Notification badges).
-11. **app/src/test and app/src/androidTest** — no unit tests yet.
+---
+
+## Completed in This Session ✅
+- All 85 Java files across all packages
+- All 14 layouts (IDs reconciled with activities)
+- 38 drawables including `ic_launcher_foreground.xml`
+- 7 anim files: `slide_in_right`, `slide_out_left`, `slide_in_left`, `slide_out_right`, `fade_in`, `fade_out`, `scale_in`
+- Adaptive launcher icon: `mipmap-anydpi-v26/ic_launcher.xml` + `ic_launcher_round.xml`; `ic_launcher_background` color (`#0D1B2A`)
+- Manifest updated: `@mipmap/ic_launcher` + `android:roundIcon`
+- `themes.xml`: added `WindowAnimation.DuoShield` for global slide transitions
+- `proguard-rules.pro`: added PhotoView + security-crypto rules
+- `BaseActivity`: added `navigateTo()` / `navigateBack()` with transition overrides; `onStop()` lock flag
+- `ChatMediaActivity`: now extends `BaseActivity`; `ListenerRegistration` import added; `msgListener` + `convListener` fields stored; `onStop()` detaches both listeners and clears typing state
+- `PairingActivity` + `SettingsActivity`: now extend `BaseActivity` (FLAG_SECURE inherited)
+- `ConversationListActivity`: confirmed — uses `setConversations()`, `TextWatcher` for search, detaches listener in `onStop()`
+- `MarkReadReceiver`: confirmed — calls `NotificationManagerCompat.cancel(NOTIF_ID)` after marking read
+- `colors_bubbles.xml`: emptied (was duplicating `bubble_mine`/`bubble_theirs` from `colors.xml`)
+- `.replit` secrets leak: both exposed PATs removed; user warned to revoke and use Replit Secrets tab (not env vars) for future tokens
 
 ---
 

@@ -1,0 +1,2 @@
+- [DuoShield architecture rules](duoshield-rules.md) — strict rules every agent must follow: FLAG_SECURE, FirebaseCostGuard, one listener/screen, DiffUtil, no Cloud Functions, Room v7
+- [DuoShield secrets leak](duoshield-secrets-leak.md) — Replit env vars write to .replit (tracked by git); always use Secrets tab (lock icon) for tokens
