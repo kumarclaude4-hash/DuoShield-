@@ -1,6 +1,5 @@
 package com.duoshield.app;
 
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.widget.TextView;
 import com.duoshield.app.crypto.CryptoInitializer;
@@ -22,21 +21,24 @@ public class KeyFingerprintActivity extends BaseActivity {
         }
         if (toolbar != null) toolbar.setNavigationOnClickListener(v -> finish());
 
-        // Layout IDs: tv_my_fingerprint, tv_partner_fingerprint (no tvStatusLabel in layout)
         TextView tvMyFingerprint      = findViewById(R.id.tv_my_fingerprint);
         TextView tvPartnerFingerprint = findViewById(R.id.tv_partner_fingerprint);
 
-        SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
-        String myPubKey  = prefs.getString(CryptoInitializer.KEY_EC_PUBLIC, null);
-        String sharedKey = prefs.getString(CryptoInitializer.KEY_SHARED_AES, null);
+        // My fingerprint — derived from my own EC public key (#33)
+        String myPubKey = CryptoInitializer.getMyPublicKeyB64(this);
+        if (tvMyFingerprint != null) {
+            tvMyFingerprint.setText(myPubKey != null
+                ? formatFingerprint(sha256(myPubKey))
+                : "Key not generated yet.");
+        }
 
-        if (tvMyFingerprint != null)
-            tvMyFingerprint.setText(myPubKey != null ? formatFingerprint(sha256(myPubKey)) : "Key not generated yet.");
-
-        if (tvPartnerFingerprint != null)
-            tvPartnerFingerprint.setText(sharedKey != null
-                ? formatFingerprint(sha256(sharedKey))
+        // Partner fingerprint — derived from partner's EC public key, NOT the shared key (#33)
+        String partnerPubKey = CryptoInitializer.getPartnerPublicKeyB64(this);
+        if (tvPartnerFingerprint != null) {
+            tvPartnerFingerprint.setText(partnerPubKey != null
+                ? formatFingerprint(sha256(partnerPubKey))
                 : "Not derived — complete pairing with your partner.");
+        }
     }
 
     @Override public boolean onSupportNavigateUp() { finish(); return true; }

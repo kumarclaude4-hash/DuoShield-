@@ -86,6 +86,5 @@ dependencies {
     // PhotoView — pinch-zoom for full-screen images
     implementation 'com.github.chrisbanes:PhotoView:2.3.0'
 
-    // Google Auth Library — OAuth2 token exchange for FCM HTTP v1 API
-    implementation 'com.google.auth:google-auth-library-oauth2-http:1.23.0'
+    // Google Auth Library removed — service-account.json removed (#5), FCM handled server-side
 }

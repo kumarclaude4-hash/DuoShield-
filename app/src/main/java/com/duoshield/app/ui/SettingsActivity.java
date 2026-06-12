@@ -3,6 +3,8 @@ package com.duoshield.app.ui;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -35,7 +37,6 @@ public class SettingsActivity extends BaseActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
 
-        // Layout uses id="toolbar", NOT "settingsToolbar"
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
@@ -76,6 +77,21 @@ public class SettingsActivity extends BaseActivity {
                 prefs.edit().putBoolean("biometric_enabled", checked).apply();
             });
         }
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_settings, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == R.id.action_unpair) {
+            confirmUnpair();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     private void saveAppPin() {
@@ -134,6 +150,15 @@ public class SettingsActivity extends BaseActivity {
         DuressManager.setDuressPin(this, pin);
         etDuressPin.setText("");
         Toast.makeText(this, "Duress PIN set.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void confirmUnpair() {
+        new AlertDialog.Builder(this)
+            .setTitle("Unpair Device")
+            .setMessage("This will delete all messages and remove your pairing. This cannot be undone.")
+            .setPositiveButton("Unpair", (d, w) -> unpairDevice())
+            .setNegativeButton("Cancel", null)
+            .show();
     }
 
     private void unpairDevice() {

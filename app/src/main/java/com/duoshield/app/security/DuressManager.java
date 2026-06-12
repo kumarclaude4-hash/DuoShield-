@@ -10,66 +10,70 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 import com.google.firebase.firestore.WriteBatch;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.security.spec.KeySpec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 
 public class DuressManager {
 
-    private static final String PREF_NAME      = "duoshield_prefs";
-    private static final String KEY_DURESS_HASH = "duress_pin_hash";
-
-    // ── Set duress PIN ────────────────────────────────────────────────────────
+    private static final String PREF_NAME        = "duoshield_prefs";
+    private static final String KEY_DURESS_HASH  = "duress_pin_hash";
+    private static final int    ITERATIONS       = 310_000;
+    private static final int    KEY_LEN          = 256;
 
     public static void setDuressPin(Context context, String pin) {
-        String hash = sha256(pin);
-        if (hash == null) return;
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-               .edit()
-               .putString(KEY_DURESS_HASH, hash)
-               .apply();
+        try {
+            byte[] salt = new byte[16];
+            new SecureRandom().nextBytes(salt);
+            byte[] hash = pbkdf2(pin, salt);
+            String stored = bytesToHex(salt) + ":" + bytesToHex(hash);
+            context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+                   .edit().putString(KEY_DURESS_HASH, stored).apply();
+        } catch (Exception ignored) {}
     }
-
-    // ── Check if entered PIN is the duress PIN ────────────────────────────────
 
     public static boolean isDuressPin(Context context, String enteredPin) {
         SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        String storedHash = prefs.getString(KEY_DURESS_HASH, null);
-        if (storedHash == null) return false;
-        String enteredHash = sha256(enteredPin);
-        return storedHash.equals(enteredHash);
+        String stored = prefs.getString(KEY_DURESS_HASH, null);
+        if (stored == null) return false;
+        int sep = stored.indexOf(':');
+        if (sep < 0) return false;
+        try {
+            byte[] salt = hexToBytes(stored.substring(0, sep));
+            byte[] expected = hexToBytes(stored.substring(sep + 1));
+            byte[] actual = pbkdf2(enteredPin, salt);
+            return constantTimeEquals(expected, actual);
+        } catch (Exception e) { return false; }
     }
-
-    // ── Trigger silent wipe ───────────────────────────────────────────────────
 
     public static void triggerDuress(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         String conversationId   = prefs.getString("conversation_id", null);
 
-        // 1. Delete Room messages on background thread
+        // 1. Atomically wipe ALL SharedPreferences FIRST — synchronous commit
+        prefs.edit().clear().commit();
+
+        // 2. Delete Room messages on background thread
         Executors.newSingleThreadExecutor().execute(() -> {
             try {
                 AppDatabase.getInstance(context).messageDao().deleteAll(conversationId);
             } catch (Exception ignored) {}
         });
 
-        // 2. Delete Firestore messages (same 100-doc chunk pattern as SelfDestructWorker)
+        // 3. Delete Firestore messages
         if (conversationId != null) {
             deleteFirestoreMessages(conversationId);
         }
-
-        // 3. Clear ALL SharedPreferences — wipes pairing, keys, tokens, everything
-        prefs.edit().clear().apply();
 
         // 4. Navigate silently to PairingActivity — no Toast, no log, no dialog
         Intent intent = new Intent(context, PairingActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         context.startActivity(intent);
     }
-
-    // ── Firestore delete in 100-doc chunks ────────────────────────────────────
 
     private static void deleteFirestoreMessages(String conversationId) {
         FirebaseFirestore db = FirebaseFirestore.getInstance();
@@ -81,37 +85,43 @@ public class DuressManager {
               if (snapshot == null || snapshot.isEmpty()) return;
 
               List<QueryDocumentSnapshot> docs = new ArrayList<>();
-              for (QueryDocumentSnapshot doc : snapshot) {
-                  docs.add(doc);
-              }
+              for (QueryDocumentSnapshot doc : snapshot) docs.add(doc);
 
-              // Delete in batches of 100
               int batchSize = 100;
               for (int i = 0; i < docs.size(); i += batchSize) {
                   WriteBatch batch = db.batch();
                   List<QueryDocumentSnapshot> chunk =
                           docs.subList(i, Math.min(i + batchSize, docs.size()));
-                  for (QueryDocumentSnapshot doc : chunk) {
-                      batch.delete(doc.getReference());
-                  }
-                  batch.commit(); // fire-and-forget; duress must be fast
+                  for (QueryDocumentSnapshot doc : chunk) batch.delete(doc.getReference());
+                  batch.commit();
               }
           });
     }
 
-    // ── SHA-256 helper ────────────────────────────────────────────────────────
+    private static byte[] pbkdf2(String pin, byte[] salt) throws Exception {
+        KeySpec spec = new PBEKeySpec(pin.toCharArray(), salt, ITERATIONS, KEY_LEN);
+        SecretKeyFactory skf = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+        return skf.generateSecret(spec).getEncoded();
+    }
 
-    private static String sha256(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            return null;
-        }
+    private static boolean constantTimeEquals(byte[] a, byte[] b) {
+        if (a.length != b.length) return false;
+        int result = 0;
+        for (int i = 0; i < a.length; i++) result |= a[i] ^ b[i];
+        return result == 0;
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) sb.append(String.format("%02x", b));
+        return sb.toString();
+    }
+
+    private static byte[] hexToBytes(String hex) {
+        int len = hex.length();
+        byte[] out = new byte[len / 2];
+        for (int i = 0; i < len; i += 2)
+            out[i / 2] = (byte) Integer.parseInt(hex.substring(i, i + 2), 16);
+        return out;
     }
 }

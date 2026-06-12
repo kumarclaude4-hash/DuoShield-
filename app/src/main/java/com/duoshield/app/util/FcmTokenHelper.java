@@ -17,7 +17,7 @@ public class FcmTokenHelper {
             prefs.edit().putString("fcm_token", token).apply();
             if (myUid != null) {
                 Map<String, Object> data = new HashMap<>();
-                data.put("token",     token);
+                data.put("fcmToken",  token);
                 data.put("platform",  "android");
                 data.put("updatedAt", com.google.firebase.firestore.FieldValue.serverTimestamp());
                 FirebaseFirestore.getInstance()
@@ -32,7 +32,7 @@ public class FcmTokenHelper {
         String myUid = prefs.getString("my_uid", null);
         if (myUid == null) return;
         Map<String, Object> data = new HashMap<>();
-        data.put("token", "");
+        data.put("fcmToken", "");
         FirebaseFirestore.getInstance()
             .collection("users").document(myUid)
             .set(data, SetOptions.merge());

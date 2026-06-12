@@ -3,16 +3,27 @@ package com.duoshield.app.util;
 import android.content.Context;
 import android.content.SharedPreferences;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.security.spec.KeySpec;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 
 public class PinManager {
 
-    private static final String PREFS   = "duoshield_prefs";
-    private static final String KEY_PIN = "app_pin_hash";
+    private static final String PREFS       = "duoshield_prefs";
+    private static final String KEY_PIN     = "app_pin_hash";
+    private static final int    ITERATIONS  = 310_000;
+    private static final int    KEY_LEN     = 256;
 
     public static void setPin(Context ctx, String pin) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-           .edit().putString(KEY_PIN, sha256(pin)).apply();
+        try {
+            byte[] salt = new byte[16];
+            new SecureRandom().nextBytes(salt);
+            byte[] hash = pbkdf2(pin, salt);
+            String stored = bytesToHex(salt) + ":" + bytesToHex(hash);
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+               .edit().putString(KEY_PIN, stored).apply();
+        } catch (Exception ignored) {}
     }
 
     public static boolean hasPinSet(Context ctx) {
@@ -24,7 +35,14 @@ public class PinManager {
         String stored = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                            .getString(KEY_PIN, null);
         if (stored == null) return false;
-        return stored.equals(sha256(entered));
+        int sep = stored.indexOf(':');
+        if (sep < 0) return false;
+        try {
+            byte[] salt = hexToBytes(stored.substring(0, sep));
+            byte[] expected = hexToBytes(stored.substring(sep + 1));
+            byte[] actual = pbkdf2(entered, salt);
+            return constantTimeEquals(expected, actual);
+        } catch (Exception e) { return false; }
     }
 
     public static void clearPin(Context ctx) {
@@ -32,13 +50,30 @@ public class PinManager {
            .edit().remove(KEY_PIN).apply();
     }
 
-    private static String sha256(String input) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (Exception e) { return ""; }
+    private static byte[] pbkdf2(String pin, byte[] salt) throws Exception {
+        KeySpec spec = new PBEKeySpec(pin.toCharArray(), salt, ITERATIONS, KEY_LEN);
+        SecretKeyFactory skf = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+        return skf.generateSecret(spec).getEncoded();
+    }
+
+    private static boolean constantTimeEquals(byte[] a, byte[] b) {
+        if (a.length != b.length) return false;
+        int result = 0;
+        for (int i = 0; i < a.length; i++) result |= a[i] ^ b[i];
+        return result == 0;
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) sb.append(String.format("%02x", b));
+        return sb.toString();
+    }
+
+    private static byte[] hexToBytes(String hex) {
+        int len = hex.length();
+        byte[] out = new byte[len / 2];
+        for (int i = 0; i < len; i += 2)
+            out[i / 2] = (byte) Integer.parseInt(hex.substring(i, i + 2), 16);
+        return out;
     }
 }

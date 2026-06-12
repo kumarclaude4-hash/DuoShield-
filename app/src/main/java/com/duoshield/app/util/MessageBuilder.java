@@ -17,7 +17,7 @@ public class MessageBuilder {
 
     public static void sendTextMessage(Context ctx, String convId, String myUid,
                                        String partnerUid, String text,
-                                       String replyToId, String replyToText) {
+                                       String replyToId, String replyPreview) {
         Executors.newSingleThreadExecutor().execute(() -> {
             try {
                 SecretKey key = CryptoInitializer.getSharedKey(ctx);
@@ -26,6 +26,14 @@ public class MessageBuilder {
                 if (key != null) {
                     encrypted = CryptoHelper.encrypt(text, key);
                     enc = true;
+                }
+
+                String encryptedReplyPreview = null;
+                if (replyPreview != null && key != null) {
+                    try { encryptedReplyPreview = CryptoHelper.encrypt(replyPreview, key); }
+                    catch (Exception ignored) { encryptedReplyPreview = replyPreview; }
+                } else {
+                    encryptedReplyPreview = replyPreview;
                 }
 
                 String msgId = UUID.randomUUID().toString();
@@ -41,16 +49,21 @@ public class MessageBuilder {
                 AppDatabase.getInstance(ctx).messageDao().insert(local);
 
                 Map<String, Object> doc = new HashMap<>();
-                doc.put("sender",     myUid);
-                doc.put("text",       encrypted);
-                doc.put("type",       "text");
-                doc.put("timestamp",  FieldValue.serverTimestamp());
-                doc.put("status",     "sent");
-                doc.put("encrypted",  enc);
+                doc.put("sender",    myUid);
+                doc.put("text",      encrypted);
+                doc.put("type",      "text");
+                doc.put("timestamp", FieldValue.serverTimestamp());
+                doc.put("status",    "sent");
+                doc.put("encrypted", enc);
                 if (replyToId != null) {
-                    doc.put("replyToId",   replyToId);
-                    doc.put("replyToText", replyToText != null ? replyToText : "");
+                    doc.put("replyToId",      replyToId);
+                    doc.put("replyPreview",   encryptedReplyPreview != null ? encryptedReplyPreview : "");
                 }
+
+                String encryptedPreview = enc
+                    ? (text.length() > 80 ? text.substring(0, 80) : text)
+                    : EncryptionHelper.encrypt(ctx,
+                        text.length() > 80 ? text.substring(0, 80) : text);
 
                 FirebaseFirestore.getInstance()
                     .collection("conversations").document(convId)
@@ -58,7 +71,7 @@ public class MessageBuilder {
                     .set(doc)
                     .addOnSuccessListener(v -> {
                         AppDatabase.getInstance(ctx).messageDao().updateStatus(msgId, "sent");
-                        ConversationMetaUpdater.update(convId, myUid, partnerUid,
+                        ConversationMetaUpdater.update(ctx, convId, myUid, partnerUid,
                             text.length() > 80 ? text.substring(0, 80) : text);
                     });
 

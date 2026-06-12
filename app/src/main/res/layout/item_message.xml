@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Universal message item — driven by view type in MessageAdapter.
-  MessageAdapter uses VIEW_TYPE_MINE / VIEW_TYPE_THEIRS to set bubble background.
   All IDs match the current MessageAdapter implementation.
 -->
 <LinearLayout
@@ -28,6 +27,18 @@
         android:paddingEnd="10dp"
         android:paddingTop="4dp"
         android:paddingBottom="4dp"
+        android:textColor="@color/ds_text_secondary"
+        android:textSize="11sp"
+        android:visibility="gone" />
+
+    <!-- Sender label above bubble (#14) -->
+    <TextView
+        android:id="@+id/senderLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:layout_marginEnd="4dp"
+        android:layout_marginBottom="2dp"
         android:textColor="@color/ds_text_secondary"
         android:textSize="11sp"
         android:visibility="gone" />
@@ -72,6 +83,43 @@
                 android:textSize="12sp"
                 android:maxLines="2"
                 android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- Contact card (#12) -->
+        <LinearLayout
+            android:id="@+id/contactCardContainer"
+            android:layout_width="200dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_reply_preview"
+            android:padding="8dp"
+            android:layout_marginBottom="4dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/cardName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/ds_text_primary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/cardUid"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/ds_text_secondary"
+                android:textSize="11sp"
+                android:layout_marginTop="2dp" />
+
+            <Button
+                android:id="@+id/cardCopyBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="Copy ID"
+                android:textSize="11sp"
+                android:layout_marginTop="4dp" />
 
         </LinearLayout>
 

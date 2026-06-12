@@ -3,6 +3,7 @@ package com.duoshield.app.util;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -15,7 +16,11 @@ public class ClipboardHelper {
         ClipData clip = ClipData.newPlainText("message", text);
         cm.setPrimaryClip(clip);
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (cm.hasPrimaryClip()) cm.clearPrimaryClip();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                cm.clearPrimaryClip();
+            } else if (cm.hasPrimaryClip()) {
+                cm.setPrimaryClip(ClipData.newPlainText("", ""));
+            }
         }, CLEAR_DELAY);
     }
 }

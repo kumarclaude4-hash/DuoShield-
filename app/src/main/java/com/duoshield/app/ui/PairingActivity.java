@@ -17,7 +17,6 @@ import com.duoshield.app.BaseActivity;
 import com.duoshield.app.ChatMediaActivity;
 import com.duoshield.app.R;
 import com.duoshield.app.pairing.PairingManager;
-import com.duoshield.app.security.DuressManager;
 
 public class PairingActivity extends BaseActivity {
 
@@ -66,7 +65,7 @@ public class PairingActivity extends BaseActivity {
                     Toast.makeText(this, "Enter the full 6-digit code.", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                if (DuressManager.isDuressPin(this, code)) { DuressManager.triggerDuress(this); return; }
+                // Duress check removed from PairingActivity (#34) — belongs only in LockScreenActivity
                 startJoinRoom(code);
             });
         }

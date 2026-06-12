@@ -1,2 +1,5 @@
 - [DuoShield architecture rules](duoshield-rules.md) — strict rules every agent must follow: FLAG_SECURE, FirebaseCostGuard, one listener/screen, DiffUtil, no Cloud Functions, Room v7
 - [DuoShield secrets leak](duoshield-secrets-leak.md) — Replit env vars write to .replit (tracked by git); always use Secrets tab (lock icon) for tokens
+- [DuoShield key storage](duoshield-key-storage.md) — EC key pair + ECDH shared key live in EncryptedSharedPreferences via SecurePrefs; partner EC pub key stored as KEY_PARTNER_EC_PUBLIC
+- [DuoShield PBKDF2 format](duoshield-pbkdf2-format.md) — PIN hashes stored as "hexSalt:hexHash" (PBKDF2WithHmacSHA256, 310k iters); old plain-hex format has no migration path
+- [DuoShield ConversationMetaUpdater](duoshield-conv-meta.md) — update() takes Context as first param; callers (MessageBuilder, ChatMediaActivity) must pass ctx
