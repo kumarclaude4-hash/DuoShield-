@@ -11,7 +11,6 @@
     <color name="ds_accent">#2AABB8</color>
     <color name="ds_accent_dim">#1A6E79</color>
     <color name="ds_accent_ripple">#332AABB8</color>
-    <color name="ds_teal_light">#4FC3F7</color>
 
     <!-- ── Bubbles ── -->
     <color name="ds_bubble_mine">#1A4F5C</color>
@@ -24,7 +23,6 @@
     <color name="ds_text_secondary">#8B949E</color>
     <color name="ds_text_tertiary">#484F58</color>
     <color name="ds_text_on_accent">#FFFFFF</color>
-    <color name="ds_text_link">#58A6FF</color>
     <color name="ds_text_timestamp">#6E7681</color>
 
     <!-- ── Status ticks ── -->
@@ -38,16 +36,13 @@
     <color name="ds_input_bg">#1C2330</color>
     <color name="ds_input_border">#30363D</color>
     <color name="ds_input_border_focus">#2AABB8</color>
-    <color name="ds_send_button">#2AABB8</color>
 
     <!-- ── Notifications / Badges ── -->
     <color name="ds_badge_bg">#2AABB8</color>
     <color name="ds_badge_text">#FFFFFF</color>
-    <color name="ds_muted_badge">#3D444D</color>
 
     <!-- ── States ── -->
     <color name="ds_online">#3FB950</color>
-    <color name="ds_offline">#6E7681</color>
     <color name="ds_danger">#F85149</color>
     <color name="ds_warning">#D29922</color>
     <color name="ds_pin">#D29922</color>
@@ -59,12 +54,25 @@
     <!-- ── Reaction pill ── -->
     <color name="ds_reaction_bg">#1C2330</color>
     <color name="ds_reaction_border">#30363D</color>
-    <color name="ds_reaction_border_active">#2AABB8</color>
-
-    <!-- ── Scrim / Overlay ── -->
-    <color name="ds_scrim">#CC0E1117</color>
-    <color name="ds_image_overlay">#80000000</color>
 
     <!-- ── Transparent ── -->
     <color name="transparent">#00000000</color>
+
+    <!--
+        ═══════════════════════════════════════════════════════
+        BACKWARD-COMPAT ALIASES
+        Old Java/XML code may reference these legacy names.
+        Keep them pointing to the new design tokens.
+        ═══════════════════════════════════════════════════════
+    -->
+    <color name="background">@color/ds_background</color>
+    <color name="toolbar_bg">@color/ds_toolbar</color>
+    <color name="surface">@color/ds_surface</color>
+    <color name="text_primary">@color/ds_text_primary</color>
+    <color name="text_secondary">@color/ds_text_secondary</color>
+    <color name="accent">@color/ds_accent</color>
+    <color name="divider">@color/ds_divider</color>
+    <color name="badge_bg">@color/ds_badge_bg</color>
+    <color name="bubble_mine">@color/ds_bubble_mine</color>
+    <color name="bubble_theirs">@color/ds_bubble_theirs</color>
 </resources>

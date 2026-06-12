@@ -1,18 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  IDs kept exactly as LockScreenActivity.java expects:
+    etPin, tvError, btnUnlock, btnBiometric
+-->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:gravity="center"
+    android:gravity="center_horizontal"
     android:background="@color/ds_background"
     android:padding="32dp">
 
     <!-- Shield icon -->
     <ImageView
-        android:layout_width="64dp"
-        android:layout_height="64dp"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_marginTop="40dp"
         android:src="@drawable/ic_shield"
         app:tint="@color/ds_accent"
         android:contentDescription="DuoShield" />
@@ -25,57 +30,36 @@
         android:text="@string/app_name"
         android:textColor="@color/ds_text_primary"
         android:textSize="22sp"
-        android:textStyle="bold"
-        android:fontFamily="sans-serif-medium" />
+        android:textStyle="bold" />
 
     <!-- Instruction -->
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="48dp"
+        android:layout_marginTop="40dp"
         android:text="@string/enter_pin"
         android:textColor="@color/ds_text_secondary"
         android:textSize="14sp" />
 
-    <!-- PIN dots -->
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="8dp">
-
-        <View android:id="@+id/dot1" android:layout_width="14dp" android:layout_height="14dp"
-            android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
-            android:background="@drawable/bg_pin_dot_empty" />
-        <View android:id="@+id/dot2" android:layout_width="14dp" android:layout_height="14dp"
-            android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
-            android:background="@drawable/bg_pin_dot_empty" />
-        <View android:id="@+id/dot3" android:layout_width="14dp" android:layout_height="14dp"
-            android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
-            android:background="@drawable/bg_pin_dot_empty" />
-        <View android:id="@+id/dot4" android:layout_width="14dp" android:layout_height="14dp"
-            android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
-            android:background="@drawable/bg_pin_dot_empty" />
-        <View android:id="@+id/dot5" android:layout_width="14dp" android:layout_height="14dp"
-            android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
-            android:background="@drawable/bg_pin_dot_empty"
-            android:visibility="invisible" />
-        <View android:id="@+id/dot6" android:layout_width="14dp" android:layout_height="14dp"
-            android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
-            android:background="@drawable/bg_pin_dot_empty"
-            android:visibility="invisible" />
-
-    </LinearLayout>
-
-    <!-- Hidden edit text to capture input -->
+    <!--
+        PIN EditText — the Java code attaches TextWatcher here,
+        runs shake animation on wrong PIN, and reads text for validation.
+        Styled with large dot characters; system numeric keyboard appears.
+    -->
     <EditText
         android:id="@+id/etPin"
-        android:layout_width="1dp"
-        android:layout_height="1dp"
-        android:alpha="0"
+        android:layout_width="200dp"
+        android:layout_height="56dp"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/bg_input_field"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:gravity="center"
         android:inputType="numberPassword"
         android:maxLength="6"
+        android:textSize="24sp"
+        android:textColor="@color/ds_text_primary"
+        android:letterSpacing="0.3"
         android:imeOptions="actionDone" />
 
     <!-- Error message -->
@@ -89,55 +73,38 @@
         android:gravity="center"
         android:visibility="invisible" />
 
-    <!-- Numeric keypad -->
-    <GridLayout
-        android:layout_width="280dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:columnCount="3"
-        android:rowCount="4"
-        android:useDefaultMargins="false">
+    <!-- Spacer -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
-        <!-- Row 1: 1 2 3 -->
-        <include layout="@layout/item_pin_key" android:id="@+id/key1" />
-        <include layout="@layout/item_pin_key" android:id="@+id/key2" />
-        <include layout="@layout/item_pin_key" android:id="@+id/key3" />
-        <!-- Row 2: 4 5 6 -->
-        <include layout="@layout/item_pin_key" android:id="@+id/key4" />
-        <include layout="@layout/item_pin_key" android:id="@+id/key5" />
-        <include layout="@layout/item_pin_key" android:id="@+id/key6" />
-        <!-- Row 3: 7 8 9 -->
-        <include layout="@layout/item_pin_key" android:id="@+id/key7" />
-        <include layout="@layout/item_pin_key" android:id="@+id/key8" />
-        <include layout="@layout/item_pin_key" android:id="@+id/key9" />
-        <!-- Row 4: biometric, 0, backspace -->
-        <ImageView
-            android:id="@+id/btnBiometric"
-            android:layout_width="80dp"
-            android:layout_height="70dp"
-            android:layout_columnWeight="1"
-            android:src="@drawable/ic_fingerprint"
-            app:tint="@color/ds_accent"
-            android:padding="20dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="biometric" />
-        <include layout="@layout/item_pin_key" android:id="@+id/key0" />
-        <ImageView
-            android:id="@+id/btnUnlock"
-            android:layout_width="80dp"
-            android:layout_height="70dp"
-            android:layout_columnWeight="1"
-            android:src="@drawable/ic_arrow_back"
-            android:rotation="180"
-            app:tint="@color/ds_text_primary"
-            android:padding="22dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="backspace" />
+    <!-- Biometric button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnBiometric"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:text="@string/use_biometric"
+        android:drawableStart="@drawable/ic_fingerprint"
+        android:drawablePadding="10dp"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        app:strokeColor="@color/ds_divider"
+        app:cornerRadius="12dp"
+        android:textColor="@color/ds_accent"
+        app:iconTint="@color/ds_accent"
+        android:visibility="gone" />
 
-    </GridLayout>
+    <!-- Unlock button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnUnlock"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="32dp"
+        android:text="@string/unlock"
+        app:backgroundTint="@color/ds_accent"
+        app:cornerRadius="12dp"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold" />
 
 </LinearLayout>

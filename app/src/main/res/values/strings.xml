@@ -11,8 +11,8 @@
     <string name="hint_email">Email address</string>
     <string name="hint_password">Password</string>
     <string name="forgot_password">Forgot password?</string>
-    <string name="no_account">Don\'t have an account? <b>Sign up</b></string>
-    <string name="have_account">Already have an account? <b>Sign in</string>
+    <string name="no_account">Don\'t have an account? Sign up</string>
+    <string name="have_account">Already have an account? Sign in</string>
 
     <!-- Conversations -->
     <string name="conversations">Messages</string>
@@ -20,15 +20,13 @@
     <string name="no_conversations_sub">Start a secure, encrypted chat</string>
     <string name="search_conversations">Search…</string>
     <string name="new_chat">New Chat</string>
-    <string name="swipe_to_delete">Swipe left to delete</string>
     <string name="delete_conversation">Delete conversation?</string>
-    <string name="delete_conversation_msg">This will permanently delete all messages in this conversation.</string>
+    <string name="delete_conversation_msg">This will permanently delete all messages.</string>
 
     <!-- Chat -->
     <string name="hint_message">Message…</string>
     <string name="send">Send</string>
     <string name="voice_note">Voice note</string>
-    <string name="tap_record">Tap to record</string>
     <string name="recording">Recording…</string>
     <string name="encrypted">Encrypted</string>
     <string name="edit_message">Edit message</string>
@@ -44,17 +42,14 @@
     <string name="you">You</string>
     <string name="no_messages">No messages yet</string>
     <string name="no_messages_sub">Messages are end-to-end encrypted</string>
-    <string name="load_more">Load earlier messages</string>
     <string name="typing">typing…</string>
     <string name="online">online</string>
     <string name="last_seen">last seen %s</string>
-    <string name="delivered">Delivered</string>
-    <string name="read">Read</string>
 
     <!-- Lock Screen -->
     <string name="enter_pin">Enter your PIN</string>
     <string name="wrong_pin">Incorrect PIN</string>
-    <string name="wrong_pin_remaining">Incorrect PIN (%d attempts remaining)</string>
+    <string name="wrong_pin_remaining">Incorrect PIN — %d attempts remaining</string>
     <string name="unlock">Unlock</string>
     <string name="use_biometric">Use biometric</string>
     <string name="biometric_prompt_title">Unlock DuoShield</string>
@@ -75,7 +70,7 @@
     <string name="self_destruct">Self-destruct timer</string>
     <string name="self_destruct_desc">Auto-delete messages after a set time</string>
     <string name="duress_pin">Duress PIN</string>
-    <string name="duress_pin_desc">Silently wipe data when entered at lock screen</string>
+    <string name="duress_pin_desc">Silently wipes data when entered at lock screen</string>
     <string name="set_pin">Set PIN</string>
     <string name="clear_pin">Clear PIN</string>
     <string name="hint_new_pin">New PIN (4–6 digits)</string>
@@ -87,21 +82,21 @@
     <string name="export_chat_desc">Save conversation as PDF</string>
     <string name="wipe_all">Wipe all data</string>
     <string name="wipe_all_desc">Permanently delete all messages and settings</string>
+    <string name="wipe_data">Wipe all data</string>
     <string name="wipe_confirm">Wipe all data?</string>
     <string name="wipe_confirm_msg">This cannot be undone. All messages, keys, and settings will be deleted.</string>
     <string name="wipe">Wipe</string>
     <string name="cache_size">Cache size</string>
     <string name="clear_cache">Clear cache</string>
+    <!-- quota_summary is used by the menu item; quota_usage is the settings row label -->
     <string name="quota_usage">Firebase quota</string>
+    <string name="quota_summary">Firebase quota</string>
     <string name="version">Version %s</string>
 
     <!-- Pairing -->
     <string name="pair_device">Pair Device</string>
     <string name="pair_subtitle">Exchange keys securely with your contact</string>
-    <string name="pair_step_1">1. Share your pairing code with your contact</string>
-    <string name="pair_step_2">2. Enter their pairing code below</string>
     <string name="your_code">Your code</string>
-    <string name="their_code">Their code</string>
     <string name="hint_partner_code">Paste partner\'s code here</string>
     <string name="pair">Complete pairing</string>
     <string name="copy_code">Copy code</string>
