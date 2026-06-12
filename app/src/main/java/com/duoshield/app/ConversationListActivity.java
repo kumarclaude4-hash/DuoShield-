@@ -11,36 +11,32 @@ import android.view.View;
 import android.widget.EditText;
 import android.widget.TextView;
 import androidx.appcompat.widget.Toolbar;
-import androidx.lifecycle.ViewModelProvider;
-import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.duoshield.app.models.Conversation;
 import com.duoshield.app.ui.ConversationAdapter;
 import com.duoshield.app.util.AppLockManager;
-import com.duoshield.app.viewmodel.ConversationViewModel;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.ListenerRegistration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public class ConversationListActivity extends BaseActivity {
 
     private static final String TAG = "ConversationListActivity";
 
-    private RecyclerView       recyclerView;
+    private RecyclerView        recyclerView;
     private ConversationAdapter adapter;
-    private TextView           tvEmpty;
-    private EditText           etSearch;
+    private TextView            tvEmpty;
+    private EditText            etSearch;
 
     private FirebaseFirestore    db;
-    private ListenerRegistration listener;
+    private ListenerRegistration snapshotListener;
     private String               myUid;
     private String               conversationId;
-    private List<Conversation>   allConversations = new ArrayList<>();
+    private final List<Conversation> allConversations = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,7 +55,9 @@ public class ConversationListActivity extends BaseActivity {
         tvEmpty      = findViewById(R.id.tvEmpty);
         etSearch     = findViewById(R.id.etSearch);
 
-        adapter = new ConversationAdapter(new ArrayList<>(), conv -> openChat(conv));
+        // Pass myUid (String) — not a List — as the first constructor argument
+        adapter = new ConversationAdapter(myUid, conv -> openChat(conv));
+        adapter.setOnLongClickListener(conv -> {/* optional long-press */ });
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setAdapter(adapter);
 
@@ -77,19 +75,16 @@ public class ConversationListActivity extends BaseActivity {
     }
 
     private void listenForConversation() {
-        if (conversationId == null) {
-            showEmpty(true);
-            return;
-        }
-        listener = db.collection("conversations").document(conversationId)
+        if (conversationId == null) { showEmpty(true); return; }
+        snapshotListener = db.collection("conversations").document(conversationId)
             .addSnapshotListener((snap, e) -> {
                 if (snap == null || !snap.exists()) return;
                 SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
                 String partnerUid = prefs.getString("partner_uid", "");
 
-                Conversation conv = new Conversation();
-                conv.id          = conversationId;
-                conv.partnerUid  = partnerUid;
+                Conversation conv  = new Conversation();
+                conv.id            = conversationId;
+                conv.partnerUid    = partnerUid;
 
                 Object pName = snap.get("partnerName_" + myUid);
                 conv.partnerName = pName != null ? pName.toString() : "Partner";
@@ -166,7 +161,7 @@ public class ConversationListActivity extends BaseActivity {
 
     @Override protected void onStop() {
         super.onStop();
-        if (listener != null) { listener.remove(); listener = null; }
+        if (snapshotListener != null) { snapshotListener.remove(); snapshotListener = null; }
     }
 
     @Override protected void onStart() {
@@ -175,7 +170,5 @@ public class ConversationListActivity extends BaseActivity {
         listenForConversation();
     }
 
-    @Override protected void onResume() {
-        super.onResume();
-    }
+    @Override protected void onResume() { super.onResume(); }
 }

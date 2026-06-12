@@ -37,13 +37,13 @@ public class ConversationAdapter
             @Override public int getOldListSize() { return items.size(); }
             @Override public int getNewListSize() { return newList.size(); }
             @Override public boolean areItemsTheSame(int o, int n) {
-                return items.get(o).getId().equals(newList.get(n).getId());
+                return safeEquals(items.get(o).id, newList.get(n).id);
             }
             @Override public boolean areContentsTheSame(int o, int n) {
                 Conversation a = items.get(o), b = newList.get(n);
-                return safeEquals(a.getLastMessage(), b.getLastMessage())
-                    && a.getLastMessageTs() == b.getLastMessageTs()
-                    && a.getUnreadCount() == b.getUnreadCount();
+                return safeEquals(a.lastMessage, b.lastMessage)
+                    && a.lastMessageTs == b.lastMessageTs
+                    && a.unreadCount == b.unreadCount;
             }
         });
         items = new ArrayList<>(newList);
@@ -60,11 +60,11 @@ public class ConversationAdapter
     @Override
     public void onBindViewHolder(@NonNull ViewHolder h, int pos) {
         Conversation c = items.get(pos);
-        h.name.setText(c.getPartnerName() != null ? c.getPartnerName() : "Unknown");
-        h.preview.setText(c.getLastMessage() != null ? c.getLastMessage() : "");
-        h.time.setText(TimeFormatter.format(c.getLastMessageTs()));
+        h.name.setText(c.partnerName != null ? c.partnerName : "Unknown");
+        h.preview.setText(c.lastMessage != null ? c.lastMessage : "");
+        h.time.setText(TimeFormatter.format(c.lastMessageTs));
 
-        int unread = c.getUnreadCount();
+        int unread = c.unreadCount;
         if (unread > 0) {
             h.badge.setVisibility(View.VISIBLE);
             h.badge.setText(unread > 99 ? "99+" : String.valueOf(unread));
@@ -72,8 +72,8 @@ public class ConversationAdapter
             h.badge.setVisibility(View.GONE);
         }
 
-        if (c.getPartnerPhotoUrl() != null && !c.getPartnerPhotoUrl().isEmpty()) {
-            GlideHelper.loadAvatar(h.avatar.getContext(), c.getPartnerPhotoUrl(), h.avatar);
+        if (c.avatarUrl != null && !c.avatarUrl.isEmpty()) {
+            GlideHelper.loadAvatar(h.avatar.getContext(), c.avatarUrl, h.avatar);
         } else {
             h.avatar.setImageResource(R.drawable.ic_person);
         }
