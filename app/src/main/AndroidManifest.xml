@@ -124,12 +124,5 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Remove default WorkManager initializer — app uses on-demand init via DuoShieldApp -->
-        <provider
-            android:name="androidx.work.impl.WorkManagerInitializer"
-            android:authorities="${applicationId}.workmanager-init"
-            android:exported="false"
-            tools:node="remove" />
-
     </application>
 </manifest>

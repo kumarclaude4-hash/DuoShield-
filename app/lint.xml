@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+        App implements Configuration.Provider for on-demand WorkManager init.
+        The default WorkManagerInitializer is removed at runtime by WorkManager itself
+        when it detects Configuration.Provider; suppress the stale lint check.
+    -->
+    <issue id="RemoveWorkManagerInitializer" severity="ignore" />
+</lint>
