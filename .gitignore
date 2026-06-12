@@ -19,6 +19,5 @@ local.properties
 # Generated files
 captures/
 
-# Firebase — NEVER commit these
+# Firebase — service account (server-side only, keep out of repo)
 app/src/main/assets/service-account.json
-google-services.json

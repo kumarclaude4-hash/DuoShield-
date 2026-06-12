@@ -86,14 +86,14 @@
                             android:imeOptions="actionNext" />
                     </com.google.android.material.textfield.TextInputLayout>
 
-                    <!-- Password -->
+                    <!-- Passphrase -->
                     <com.google.android.material.textfield.TextInputLayout
                         android:id="@+id/tilPassword"
                         style="@style/Widget.DuoShield.TextInput"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:hint="@string/hint_password"
+                        android:hint="@string/hint_passphrase"
                         app:startIconDrawable="@drawable/ic_lock"
                         app:startIconTint="@color/ds_text_secondary"
                         app:endIconMode="password_toggle"
@@ -105,24 +105,58 @@
                             android:layout_height="wrap_content"
                             android:inputType="textPassword"
                             android:textColor="@color/ds_text_primary"
+                            android:imeOptions="actionNext" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- Recovery passphrase — shown only in sign-up mode -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/tilRecoveryPhrase"
+                        style="@style/Widget.DuoShield.TextInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:hint="@string/hint_recovery_phrase"
+                        android:visibility="gone"
+                        app:startIconDrawable="@drawable/ic_lock"
+                        app:startIconTint="@color/ds_text_secondary"
+                        app:endIconMode="password_toggle"
+                        app:endIconTint="@color/ds_text_secondary">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etRecoveryPhrase"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textPassword"
+                            android:textColor="@color/ds_text_primary"
                             android:imeOptions="actionDone" />
                     </com.google.android.material.textfield.TextInputLayout>
 
-                    <!-- Forgot password -->
+                    <!-- Recovery note — shown only in sign-up mode -->
+                    <TextView
+                        android:id="@+id/tvRecoveryNote"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/recovery_phrase_note"
+                        android:textColor="@color/ds_text_secondary"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+
+                    <!-- Forgot passphrase — hidden in sign-up mode -->
                     <TextView
                         android:id="@+id/tvForgotPassword"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="end"
                         android:layout_marginTop="8dp"
-                        android:text="@string/forgot_password"
+                        android:text="@string/forgot_passphrase"
                         android:textColor="@color/ds_accent"
                         android:textSize="13sp"
                         android:padding="4dp"
                         android:clickable="true"
                         android:focusable="true" />
 
-                    <!-- Sign In button -->
+                    <!-- Action button -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnSignIn"
                         android:layout_width="match_parent"
@@ -161,7 +195,7 @@
                 android:textSize="14sp"
                 android:visibility="gone" />
 
-            <!-- Sign up prompt -->
+            <!-- Sign up / sign in toggle -->
             <TextView
                 android:id="@+id/tvSignUp"
                 android:layout_width="wrap_content"
@@ -174,7 +208,7 @@
                 android:clickable="true"
                 android:focusable="true" />
 
-            <!-- Lock icon at bottom -->
+            <!-- Bottom security badge -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
