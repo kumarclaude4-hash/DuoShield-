@@ -91,6 +91,10 @@ dependencies {
     // PhotoView — pinch-zoom for full-screen images
     implementation 'com.github.chrisbanes:PhotoView:2.3.0'
 
+    // ZXing — QR code generation + scanning
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    implementation 'com.google.zxing:core:3.5.3'
+
     // Unit tests
     testImplementation 'junit:junit:4.13.2'
 }
