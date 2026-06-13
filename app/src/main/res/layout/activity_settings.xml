@@ -1,336 +1,304 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/ds_background"
-    android:fitsSystemWindows="true">
+    android:background="@color/background">
 
-    <com.google.android.material.appbar.AppBarLayout
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/settingsToolbar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/ds_toolbar"
-        app:elevation="0dp">
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            style="@style/Widget.DuoShield.Toolbar"
-            app:navigationIcon="@drawable/ic_arrow_back"
-            app:title="@string/settings"/>
-    </com.google.android.material.appbar.AppBarLayout>
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/toolbar_bg"
+        app:title="Settings"
+        app:titleTextColor="@color/text_primary"
+        app:navigationIcon="@drawable/ic_arrow_back" />
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:scrollbars="none"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingBottom="32dp">
+            android:padding="16dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
 
-            <!-- ACCOUNT SECTION -->
-            <TextView style="@style/SectionHeader" android:text="@string/section_account"/>
+            <!-- ══ Section: Appearance ══════════════════════════════════ -->
+            <TextView
+                android:text="APPEARANCE"
+                style="@style/SectionHeader" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchDarkMode"
+                android:text="Dark mode"
+                android:textColor="@color/text_primary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp" />
+
+            <View style="@style/Divider" />
+
+            <!-- ══ Section: Notifications ═══════════════════════════════ -->
+            <TextView
+                android:text="NOTIFICATIONS"
+                style="@style/SectionHeader" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchNotifications"
+                android:text="Enable push notifications"
+                android:textColor="@color/text_primary"
+                android:checked="true"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp" />
+
+            <View style="@style/Divider" />
+
+            <!-- ══ Section: App PIN ═════════════════════════════════════ -->
+            <TextView
+                android:text="APP PIN"
+                style="@style/SectionHeader" />
+
+            <TextView
+                android:id="@+id/tvPinStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                android:layout_marginBottom="12dp" />
+
+            <EditText
+                android:id="@+id/etNewPin"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="New PIN (4–6 digits)"
+                android:textColorHint="@color/text_hint"
+                android:textColor="@color/text_primary"
+                android:inputType="numberPassword"
+                android:maxLength="6"
+                android:background="@drawable/bg_input_field"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:layout_marginBottom="8dp" />
+
+            <EditText
+                android:id="@+id/etConfirmPin"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="Confirm PIN"
+                android:textColorHint="@color/text_hint"
+                android:textColor="@color/text_primary"
+                android:inputType="numberPassword"
+                android:maxLength="6"
+                android:background="@drawable/bg_input_field"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:layout_marginBottom="12dp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="20dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSetPin"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Set PIN"
+                    android:layout_marginEnd="8dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnClearPin"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Clear PIN"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:textColor="@color/error_red" />
+            </LinearLayout>
+
+            <View style="@style/Divider" />
+
+            <!-- ══ Section: Biometric ════════════════════════════════════ -->
+            <TextView
+                android:text="BIOMETRIC LOCK"
+                style="@style/SectionHeader" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchBiometric"
+                android:text="Require fingerprint / face to unlock"
+                android:textColor="@color/text_primary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:text="Uses your device biometric only — never the phone's PIN/password. Falls back to the app PIN above."
+                android:textSize="11sp"
+                android:textColor="@color/text_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp" />
+
+            <View style="@style/Divider" />
+
+            <!-- ══ Section: Duress PIN ══════════════════════════════════ -->
+            <LinearLayout
                 android:orientation="vertical"
-                android:background="@color/ds_surface"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:paddingTop="14dp"
-                android:paddingBottom="14dp">
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@color/surface"
+                android:padding="14dp"
+                android:layout_marginBottom="8dp">
 
                 <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/label_user_id"
-                    android:textColor="@color/ds_text_secondary"
+                    android:text="DURESS PIN"
+                    android:textStyle="bold"
                     android:textSize="11sp"
-                    android:letterSpacing="0.08" />
-
-                <LinearLayout
+                    android:letterSpacing="0.08"
+                    android:textColor="@color/error_red"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginTop="4dp">
-
-                    <TextView
-                        android:id="@+id/tvUserId"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="monospace"
-                        android:textSize="18sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/ds_text_primary"
-                        android:textIsSelectable="true" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnCopyUserId"
-                        style="@style/Widget.MaterialComponents.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/copy" />
-                </LinearLayout>
+                    android:layout_marginBottom="4dp" />
 
                 <TextView
+                    android:text="Enter this at the lock screen instead of your app PIN to silently wipe all data. Must differ from your app PIN."
+                    android:textSize="11sp"
+                    android:textColor="@color/text_secondary"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="@string/label_user_id_desc"
-                    android:textColor="@color/ds_text_secondary"
-                    android:textSize="12sp" />
-            </LinearLayout>
+                    android:layout_marginBottom="10dp" />
 
-            <View style="@style/Divider"/>
+                <EditText
+                    android:id="@+id/etDuressPin"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:hint="Duress PIN (4–6 digits)"
+                    android:textColorHint="@color/text_hint"
+                    android:textColor="@color/text_primary"
+                    android:inputType="numberPassword"
+                    android:maxLength="6"
+                    android:background="@drawable/bg_input_field"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:layout_marginBottom="10dp" />
 
-            <!-- SECURITY SECTION -->
-            <TextView style="@style/SectionHeader" android:text="@string/section_security"/>
-
-            <!-- App PIN -->
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="vertical" android:background="@color/ds_surface"
-                android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingTop="16dp" android:paddingBottom="4dp">
-
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="@string/app_pin"
-                    android:textColor="@color/ds_text_primary" android:textSize="15sp" android:textStyle="bold"/>
-                <TextView android:id="@+id/tvPinStatus"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="@string/pin_status_not_set"
-                    android:textColor="@color/ds_text_secondary" android:textSize="13sp"
-                    android:layout_marginTop="2dp" android:layout_marginBottom="12dp"/>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/Widget.DuoShield.TextInput"
-                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:hint="@string/hint_new_pin"
-                    app:endIconMode="password_toggle" app:endIconTint="@color/ds_text_secondary">
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/etNewPin"
-                        android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:inputType="numberPassword" android:maxLength="6"
-                        android:textColor="@color/ds_text_primary"/>
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/Widget.DuoShield.TextInput"
-                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp" android:hint="@string/hint_confirm_pin"
-                    app:endIconMode="password_toggle" app:endIconTint="@color/ds_text_secondary">
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/etConfirmPin"
-                        android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:inputType="numberPassword" android:maxLength="6"
-                        android:textColor="@color/ds_text_primary"/>
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:orientation="horizontal" android:layout_marginTop="12dp"
-                    android:layout_marginBottom="8dp">
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnSetPin"
-                        android:layout_width="0dp" android:layout_height="44dp"
-                        android:layout_weight="1" android:layout_marginEnd="8dp"
-                        android:text="@string/set_pin"
-                        app:backgroundTint="@color/ds_accent" app:cornerRadius="10dp"/>
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnClearPin"
-                        android:layout_width="0dp" android:layout_height="44dp"
-                        android:layout_weight="1"
-                        android:text="@string/clear_pin"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        app:strokeColor="@color/ds_divider" app:cornerRadius="10dp"
-                        android:textColor="@color/ds_text_secondary"/>
-                </LinearLayout>
-            </LinearLayout>
-
-            <View style="@style/Divider"/>
-
-            <!-- Biometric -->
-            <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
-                android:orientation="horizontal" android:gravity="center_vertical"
-                android:background="@color/ds_surface"
-                android:paddingStart="16dp" android:paddingEnd="16dp">
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:orientation="vertical">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="@string/biometric_lock"
-                        android:textColor="@color/ds_text_primary" android:textSize="15sp"/>
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="@string/biometric_desc"
-                        android:textColor="@color/ds_text_secondary" android:textSize="12sp"/>
-                </LinearLayout>
-                <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/switchBiometric"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    style="@style/Widget.DuoShield.Switch"/>
-            </LinearLayout>
-
-            <View style="@style/Divider"/>
-
-            <!-- Self-destruct -->
-            <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
-                android:orientation="horizontal" android:gravity="center_vertical"
-                android:background="@color/ds_surface"
-                android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:clickable="true" android:focusable="true"
-                android:foreground="?attr/selectableItemBackground">
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:orientation="vertical">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="@string/self_destruct"
-                        android:textColor="@color/ds_text_primary" android:textSize="15sp"/>
-                    <TextView android:id="@+id/tvSelfDestructValue"
-                        android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Off"
-                        android:textColor="@color/ds_text_secondary" android:textSize="12sp"/>
-                </LinearLayout>
-                <ImageView android:layout_width="20dp" android:layout_height="20dp"
-                    android:src="@drawable/ic_timer" app:tint="@color/ds_text_secondary"
-                    android:contentDescription="timer"/>
-            </LinearLayout>
-
-            <View style="@style/Divider"/>
-
-            <!-- Duress PIN -->
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="vertical" android:background="@color/ds_surface"
-                android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:paddingTop="14dp" android:paddingBottom="14dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="@string/duress_pin"
-                    android:textColor="@color/ds_text_primary" android:textSize="15sp"/>
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="@string/duress_pin_desc"
-                    android:textColor="@color/ds_text_secondary" android:textSize="12sp"
-                    android:layout_marginTop="2dp" android:layout_marginBottom="10dp"/>
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/Widget.DuoShield.TextInput"
-                    android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:hint="@string/hint_duress_pin"
-                    app:endIconMode="password_toggle" app:endIconTint="@color/ds_text_secondary">
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/etDuressPin"
-                        android:layout_width="match_parent" android:layout_height="wrap_content"
-                        android:inputType="numberPassword" android:maxLength="6"
-                        android:textColor="@color/ds_text_primary"/>
-                </com.google.android.material.textfield.TextInputLayout>
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSetDuressPin"
-                    android:layout_width="match_parent" android:layout_height="44dp"
-                    android:layout_marginTop="10dp" android:text="Set Duress PIN"
-                    app:backgroundTint="@color/ds_surface_3" app:cornerRadius="10dp"
-                    android:textColor="@color/ds_danger"/>
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Set Duress PIN"
+                    android:backgroundTint="@color/error_red" />
             </LinearLayout>
 
-            <!-- STORAGE SECTION -->
-            <TextView style="@style/SectionHeader" android:text="@string/section_storage"/>
+            <View style="@style/Divider" />
 
-            <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
-                android:orientation="horizontal" android:gravity="center_vertical"
-                android:background="@color/ds_surface"
-                android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:clickable="true" android:focusable="true"
-                android:foreground="?attr/selectableItemBackground">
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:orientation="vertical">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="@string/cache_size"
-                        android:textColor="@color/ds_text_primary" android:textSize="15sp"/>
-                    <TextView android:id="@+id/tvCacheSize"
-                        android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Calculating…"
-                        android:textColor="@color/ds_text_secondary" android:textSize="12sp"/>
-                </LinearLayout>
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnClearCache"
-                    android:layout_width="wrap_content" android:layout_height="36dp"
-                    android:text="@string/clear_cache"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    app:strokeColor="@color/ds_divider" app:cornerRadius="8dp"
-                    android:textColor="@color/ds_text_secondary" android:textSize="12sp"/>
-            </LinearLayout>
-
-            <View style="@style/Divider"/>
-
-            <!-- Export -->
-            <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
-                android:orientation="horizontal" android:gravity="center_vertical"
-                android:background="@color/ds_surface"
-                android:paddingStart="16dp" android:paddingEnd="16dp"
-                android:clickable="true" android:focusable="true"
-                android:id="@+id/rowExport"
-                android:foreground="?attr/selectableItemBackground">
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:orientation="vertical">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="@string/export_chat"
-                        android:textColor="@color/ds_text_primary" android:textSize="15sp"/>
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="@string/export_chat_desc"
-                        android:textColor="@color/ds_text_secondary" android:textSize="12sp"/>
-                </LinearLayout>
-                <ImageView android:layout_width="20dp" android:layout_height="20dp"
-                    android:src="@drawable/ic_image" app:tint="@color/ds_text_secondary"
-                    android:contentDescription="export"/>
-            </LinearLayout>
-
-            <!-- ABOUT SECTION -->
-            <TextView style="@style/SectionHeader" android:text="@string/section_about"/>
-
-            <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
-                android:orientation="horizontal" android:gravity="center_vertical"
-                android:background="@color/ds_surface"
-                android:paddingStart="16dp" android:paddingEnd="16dp">
-                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                    android:layout_weight="1" android:orientation="vertical">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Firebase Quota"
-                        android:textColor="@color/ds_text_primary" android:textSize="15sp"/>
-                    <TextView android:id="@+id/tvQuota"
-                        android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Loading…"
-                        android:textColor="@color/ds_text_secondary" android:textSize="12sp"/>
-                </LinearLayout>
-            </LinearLayout>
-
-            <View style="@style/Divider"/>
-
-            <LinearLayout android:layout_width="match_parent" android:layout_height="56dp"
-                android:orientation="horizontal" android:gravity="center_vertical"
-                android:background="@color/ds_surface"
-                android:paddingStart="16dp" android:paddingEnd="16dp">
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-                    android:id="@+id/tvVersion"
-                    android:textColor="@color/ds_text_secondary" android:textSize="14sp"
-                    android:text="Version —"/>
-            </LinearLayout>
-
-            <!-- DANGER ZONE -->
-            <TextView style="@style/SectionHeader" android:text="Danger Zone"
-                android:textColor="@color/ds_danger"/>
+            <!-- ══ Section: Disappearing Messages ══════════════════════ -->
+            <TextView
+                android:text="DISAPPEARING MESSAGES"
+                style="@style/SectionHeader" />
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnWipeAll"
-                android:layout_width="match_parent" android:layout_height="52dp"
-                android:layout_marginStart="16dp" android:layout_marginEnd="16dp"
-                android:layout_marginTop="4dp"
-                android:text="@string/wipe_all"
-                app:backgroundTint="@color/ds_surface"
-                app:strokeColor="@color/ds_danger" app:strokeWidth="1dp"
-                app:cornerRadius="12dp"
-                android:textColor="@color/ds_danger" android:textStyle="bold"/>
+                android:id="@+id/btnDisappearing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Off"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_marginBottom="20dp" />
+
+            <View style="@style/Divider" />
+
+            <!-- ══ Section: Auto-Delete ══════════════════════════════════ -->
+            <TextView
+                android:text="AUTO-DELETE"
+                style="@style/SectionHeader" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchSelfDestruct"
+                android:text="Auto-delete messages"
+                android:textColor="@color/text_primary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp" />
+
+            <LinearLayout
+                android:id="@+id/layoutMinutes"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:text="Delete after "
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+                <EditText
+                    android:id="@+id/editTtlMinutes"
+                    android:inputType="number"
+                    android:text="60"
+                    android:textColor="@color/text_primary"
+                    android:layout_width="72dp"
+                    android:layout_height="wrap_content"
+                    android:maxLength="5"
+                    android:gravity="center" />
+
+                <TextView
+                    android:text=" minutes"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/textTtlHint"
+                android:text="Range: 5 – 10 080 minutes (7 days)"
+                android:textSize="11sp"
+                android:textColor="@color/text_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:visibility="gone" />
+
+            <View style="@style/Divider" />
+
+            <!-- ══ Section: Danger Zone ══════════════════════════════════ -->
+            <TextView
+                android:text="DANGER ZONE"
+                android:textStyle="bold"
+                android:textSize="11sp"
+                android:letterSpacing="0.08"
+                android:textColor="@color/error_red"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnUnpair"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Unpair Device"
+                android:backgroundTint="@color/error_red"
+                android:layout_marginBottom="6dp" />
+
+            <TextView
+                android:text="Clears all pairing data and local messages. Cannot be undone."
+                android:textSize="11sp"
+                android:textColor="@color/text_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="32dp" />
 
         </LinearLayout>
     </ScrollView>
-
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+</LinearLayout>

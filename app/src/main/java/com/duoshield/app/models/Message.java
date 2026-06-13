@@ -27,6 +27,27 @@ public class Message {
 
     public Message() {}
 
+    /** 6-arg convenience constructor (no media). */
+    public Message(@NonNull String id, String conversationId, String sender,
+                   String text, long timestamp, boolean isEncrypted) {
+        this.id             = id;
+        this.conversationId = conversationId;
+        this.sender         = sender;
+        this.text           = text;
+        this.timestamp      = timestamp;
+        this.isEncrypted    = isEncrypted;
+        this.status         = "sent";
+    }
+
+    /** 8-arg convenience constructor (with media). */
+    public Message(@NonNull String id, String conversationId, String sender,
+                   String text, long timestamp, boolean isEncrypted,
+                   String mediaUrl, String mediaType) {
+        this(id, conversationId, sender, text, timestamp, isEncrypted);
+        this.mediaUrl  = mediaUrl;
+        this.mediaType = mediaType;
+    }
+
     @NonNull public String getId()           { return id; }
     public String  getConversationId()       { return conversationId; }
     public String  getSender()               { return sender; }
