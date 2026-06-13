@@ -30,7 +30,7 @@ public class ConversationViewModel extends AndroidViewModel {
             return;
         }
         listener = FirebaseFirestore.getInstance()
-            .collection("conversations").document(conversationId)
+            .collection("chats").document(conversationId)
             .addSnapshotListener((snap, e) -> {
                 if (e != null) { errorMessage.postValue(e.getMessage()); return; }
                 if (snap == null || !snap.exists()) return;

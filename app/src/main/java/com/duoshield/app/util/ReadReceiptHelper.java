@@ -10,7 +10,7 @@ public class ReadReceiptHelper {
         FirebaseFirestore db = FirebaseFirestore.getInstance();
         // Firestore only allows one inequality filter per query — remove the second
         // whereNotEqualTo and filter sender client-side instead (#18)
-        db.collection("conversations").document(convId)
+        db.collection("chats").document(convId)
           .collection("messages")
           .whereNotEqualTo("status", "read")
           .get()
@@ -27,13 +27,13 @@ public class ReadReceiptHelper {
               }
               if (count > 0) batch.commit();
           });
-        db.collection("conversations").document(convId)
+        db.collection("chats").document(convId)
           .update("unread_" + myUid, 0L);
     }
 
     public static void markMessageRead(String convId, String messageId) {
         FirebaseFirestore.getInstance()
-            .collection("conversations").document(convId)
+            .collection("chats").document(convId)
             .collection("messages").document(messageId)
             .update("status", "read");
     }

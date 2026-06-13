@@ -30,7 +30,7 @@ public class MessageViewModel extends AndroidViewModel {
 
     public void startListening(String conversationId) {
         listener = FirebaseFirestore.getInstance()
-            .collection("conversations").document(conversationId)
+            .collection("chats").document(conversationId)
             .collection("messages")
             .orderBy("timestamp", Query.Direction.ASCENDING)
             .addSnapshotListener((snap, e) -> {

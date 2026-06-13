@@ -19,7 +19,7 @@ public class EditMessageHelper {
         updates.put("text",   encrypted);
         updates.put("edited", true);
         FirebaseFirestore.getInstance()
-            .collection("conversations").document(convId)
+            .collection("chats").document(convId)
             .collection("messages").document(messageId)
             .update(updates);
     }

@@ -66,7 +66,7 @@ public class MessageBuilder {
                         text.length() > 80 ? text.substring(0, 80) : text);
 
                 FirebaseFirestore.getInstance()
-                    .collection("conversations").document(convId)
+                    .collection("chats").document(convId)
                     .collection("messages").document(msgId)
                     .set(doc)
                     .addOnSuccessListener(v -> {

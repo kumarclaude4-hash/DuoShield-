@@ -10,20 +10,39 @@ import com.duoshield.app.crypto.CryptoInitializer;
 import com.duoshield.app.crypto.ECDHHelper;
 import com.duoshield.app.util.SecurePrefs;
 import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.SetOptions;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
+
 import javax.crypto.SecretKey;
 
+/**
+ * Permanent-connection manager.
+ *
+ * Replaces the temporary 6-digit pairing-code system with a stable
+ * UserID-based connect flow:
+ *
+ *  1. User enters partner's DS-XXXXXXXX User ID.
+ *  2. App resolves ID → Firebase UID via  identities/{userId}.uid
+ *  3. App uploads own EC public key to     users/{myUid}.ecPublicKey
+ *  4. App fetches partner EC public key from users/{partnerUid}.ecPublicKey
+ *     (retries up to KEY_FETCH_RETRIES times, KEY_FETCH_DELAY_MS apart).
+ *  5. ECDH shared key is derived and stored in EncryptedSharedPreferences.
+ *  6. chatId = SHA-256( smaller_uid + "/" + larger_uid )  — deterministic,
+ *     identical on both devices, no race condition possible.
+ *  7. chats/{chatId} document is created/merged with participant UIDs.
+ *  8. SharedPreferences are saved and onPaired() is called.
+ *
+ * Firestore path: chats/{chatId}/messages/{messageId}
+ * (was: conversations/{conversationId}/messages/{messageId})
+ */
 public class PairingManager {
 
     private static final String PREFS_NAME      = "duoshield_prefs";
@@ -32,142 +51,61 @@ public class PairingManager {
     private static final String KEY_MY_UID      = "my_uid";
     private static final String KEY_PARTNER_UID = "partner_uid";
 
-    private static final long   ROOM_EXPIRY_MS  = 10 * 60 * 1000L;
-    private static final int    RETRY_DELAY_MS  = 2000;
+    private static final int  KEY_FETCH_RETRIES  = 3;
+    private static final long KEY_FETCH_DELAY_MS = 1500L;
 
-    private final Context context;
+    private final Context         context;
     private final FirebaseFirestore db;
-    private ListenerRegistration roomListener;
 
     public interface PairingCallback {
-        void onCodeGenerated(String code);
-        void onWaitingForPartner();
         void onPaired();
         void onError(String message);
     }
 
     public PairingManager(Context context) {
         this.context = context.getApplicationContext();
-        this.db = FirebaseFirestore.getInstance();
+        this.db      = FirebaseFirestore.getInstance();
     }
 
-    // ── Create room ───────────────────────────────────────────────────────────
+    // ── Public entry point ────────────────────────────────────────────────────
 
-    public void createRoom(PairingCallback callback) {
+    /**
+     * Connect to a partner by their DuoShield User ID (e.g. DS-A1B2C3D4).
+     * Safe to call from the UI thread — all Firestore work is async.
+     */
+    public void connectByUserId(String partnerId, PairingCallback callback) {
         String myUid = FirebaseAuth.getInstance().getUid();
         if (myUid == null) {
             callback.onError("Not signed in. Please reopen the app.");
             return;
         }
-        String code = generateCode();
-        attemptCreateRoom(code, myUid, callback, false);
-    }
-
-    private void attemptCreateRoom(String code, String myUid,
-                                    PairingCallback callback, boolean isRetry) {
-        long now = System.currentTimeMillis();
-        Map<String, Object> room = new HashMap<>();
-        room.put("creatorUid", myUid);
-        room.put("joinerUid",  "");
-        room.put("status",     "waiting");
-        room.put("createdAt",  now);
-        room.put("expiresAt",  now + ROOM_EXPIRY_MS);
-
-        db.collection("rooms").document(code)
-            .set(room)
-            .addOnSuccessListener(aVoid -> {
-                callback.onCodeGenerated(code);
-                callback.onWaitingForPartner();
-                listenForPartner(code, myUid, callback);
-            })
-            .addOnFailureListener(e -> {
-                String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-                // Retry once if the connection wasn't ready yet
-                if (!isRetry && (msg.contains("offline") || msg.contains("unavailable")
-                        || msg.contains("connect"))) {
-                    new Handler(Looper.getMainLooper()).postDelayed(
-                        () -> attemptCreateRoom(code, myUid, callback, true),
-                        RETRY_DELAY_MS);
-                } else {
-                    callback.onError(isRetry
-                        ? "Cannot reach server. Check your internet connection."
-                        : "Failed to create pairing room. Please try again.");
-                }
-            });
-    }
-
-    private void listenForPartner(String code, String myUid, PairingCallback callback) {
-        DocumentReference roomRef = db.collection("rooms").document(code);
-        roomListener = roomRef.addSnapshotListener((snapshot, e) -> {
-            if (e != null || snapshot == null || !snapshot.exists()) return;
-            String status    = snapshot.getString("status");
-            String joinerUid = snapshot.getString("joinerUid");
-            if ("paired".equals(status) && joinerUid != null && !joinerUid.isEmpty()) {
-                stopListening();
-                String convId = buildConversationId(code, myUid, joinerUid);
-                savePrefs(myUid, joinerUid, convId);
-                cleanupRoom(code);
-                deriveAndStoreSharedKey(myUid, joinerUid, callback);
-            }
-        });
-    }
-
-    // ── Join room ─────────────────────────────────────────────────────────────
-
-    public void joinRoom(String code, PairingCallback callback) {
-        String myUid = FirebaseAuth.getInstance().getUid();
-        if (myUid == null) {
-            callback.onError("Not signed in. Please reopen the app.");
+        if (partnerId == null || partnerId.trim().isEmpty()) {
+            callback.onError("Please enter your partner's User ID.");
             return;
         }
-        if (code == null || code.length() != 6) {
-            callback.onError("Please enter a valid 6-digit code.");
+        String id = partnerId.trim().toUpperCase();
+        if (!id.matches("DS-[0-9A-F]{8}")) {
+            callback.onError("Invalid User ID format. Expected DS-XXXXXXXX (e.g. DS-A1B2C3D4).");
             return;
         }
 
-        DocumentReference roomRef = db.collection("rooms").document(code);
-        roomRef.get()
-            .addOnSuccessListener(snapshot -> {
-                if (!snapshot.exists()) {
-                    callback.onError("Invalid code. Room not found.");
+        // Step 1 — resolve userId → Firebase UID
+        db.collection("identities").document(id).get()
+            .addOnSuccessListener(snap -> {
+                if (!snap.exists()) {
+                    callback.onError("User ID not found. Check the ID and try again.");
                     return;
                 }
-                String status     = snapshot.getString("status");
-                String creatorUid = snapshot.getString("creatorUid");
-                Long expiresAt    = snapshot.getLong("expiresAt");
-                if (creatorUid == null || creatorUid.isEmpty()) {
-                    callback.onError("Invalid room data. Ask your contact to generate a new code.");
+                String partnerUid = snap.getString("uid");
+                if (partnerUid == null || partnerUid.isEmpty()) {
+                    callback.onError("User ID not found. Check the ID and try again.");
                     return;
                 }
-                if (expiresAt != null && System.currentTimeMillis() > expiresAt) {
-                    callback.onError("This code has expired. Ask your contact to generate a new one.");
-                    cleanupRoom(code);
+                if (partnerUid.equals(myUid)) {
+                    callback.onError("You cannot connect to yourself.");
                     return;
                 }
-                if ("paired".equals(status)) {
-                    callback.onError("This code has already been used.");
-                    return;
-                }
-                if (myUid.equals(creatorUid)) {
-                    callback.onError("You cannot join your own room.");
-                    return;
-                }
-
-                Map<String, Object> update = new HashMap<>();
-                update.put("joinerUid", myUid);
-                update.put("status",    "paired");
-
-                roomRef.update(update)
-                    .addOnSuccessListener(aVoid -> {
-                        String convId = buildConversationId(code, creatorUid, myUid);
-                        savePrefs(myUid, creatorUid, convId);
-                        // Do NOT delete the room here — the creator's snapshot listener
-                        // must still be able to read the "paired" status. The creator
-                        // owns cleanup once it sees the paired state.
-                        deriveAndStoreSharedKey(myUid, creatorUid, callback);
-                    })
-                    .addOnFailureListener(e -> callback.onError(
-                            "Failed to join. Check your internet connection and try again."));
+                uploadMyKeyThenFetch(myUid, partnerUid, callback);
             })
             .addOnFailureListener(e -> {
                 String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
@@ -179,113 +117,121 @@ public class PairingManager {
             });
     }
 
-    // ── ECDH key exchange ─────────────────────────────────────────────────────
+    // ── Step 2 — upload own EC public key, then kick off partner-key fetch ────
 
-    private static final int    KEY_FETCH_RETRIES  = 3;
-    private static final long   KEY_FETCH_DELAY_MS = 1500L;
-
-    private void deriveAndStoreSharedKey(String myUid, String partnerUid,
-                                          PairingCallback callback) {
+    private void uploadMyKeyThenFetch(String myUid, String partnerUid,
+                                       PairingCallback callback) {
         SharedPreferences secure = SecurePrefs.get(context);
-        String myPublicKeyB64 = secure.getString(CryptoInitializer.KEY_EC_PUBLIC, null);
-
-        if (myPublicKeyB64 == null) {
+        String myPubB64 = secure.getString(CryptoInitializer.KEY_EC_PUBLIC, null);
+        if (myPubB64 == null) {
             CryptoInitializer.ensureKeyExists(context);
-            myPublicKeyB64 = secure.getString(CryptoInitializer.KEY_EC_PUBLIC, null);
+            myPubB64 = secure.getString(CryptoInitializer.KEY_EC_PUBLIC, null);
         }
-        if (myPublicKeyB64 == null) { callback.onPaired(); return; }
-
-        final String finalMyPubB64 = myPublicKeyB64;
+        if (myPubB64 == null) {
+            callback.onError("Encryption key not ready. Please restart the app and try again.");
+            return;
+        }
+        final String finalMyPub    = myPubB64;
+        final SharedPreferences sp = secure;
 
         db.collection("users").document(myUid)
-          .set(Collections.singletonMap("ecPublicKey", finalMyPubB64), SetOptions.merge())
-          .addOnSuccessListener(v ->
-              fetchPartnerKeyWithRetry(partnerUid, secure, callback, KEY_FETCH_RETRIES))
-          .addOnFailureListener(e -> callback.onPaired());
+            .set(Collections.singletonMap("ecPublicKey", finalMyPub), SetOptions.merge())
+            .addOnSuccessListener(v ->
+                fetchPartnerKeyWithRetry(myUid, partnerUid, sp, callback, KEY_FETCH_RETRIES))
+            .addOnFailureListener(e ->
+                fetchPartnerKeyWithRetry(myUid, partnerUid, sp, callback, KEY_FETCH_RETRIES));
     }
 
-    /**
-     * Fetch the partner's EC public key from Firestore with up to {@code retriesLeft}
-     * retries (1.5 s apart). This guards against the race where the partner hasn't yet
-     * uploaded their key by the time we try to read it.
-     */
-    private void fetchPartnerKeyWithRetry(String partnerUid, SharedPreferences secure,
+    // ── Step 3 — fetch partner key (retry on null) ────────────────────────────
+
+    private void fetchPartnerKeyWithRetry(String myUid, String partnerUid,
+                                          SharedPreferences secure,
                                           PairingCallback callback, int retriesLeft) {
         db.collection("users").document(partnerUid).get()
-          .addOnSuccessListener(doc -> {
-              String partnerPubB64 = doc.getString("ecPublicKey");
-              if (partnerPubB64 != null && !partnerPubB64.isEmpty()) {
-                  storeSharedKey(partnerPubB64, secure);
-                  callback.onPaired();
-              } else if (retriesLeft > 0) {
-                  new Handler(Looper.getMainLooper()).postDelayed(
-                      () -> fetchPartnerKeyWithRetry(partnerUid, secure, callback, retriesLeft - 1),
-                      KEY_FETCH_DELAY_MS);
-              } else {
-                  // Partner key still not available after all retries — proceed anyway;
-                  // the shared key can be rederived later when the key arrives.
-                  callback.onPaired();
-              }
-          })
-          .addOnFailureListener(e -> callback.onPaired());
+            .addOnSuccessListener(doc -> {
+                String partnerPubB64 = doc.getString("ecPublicKey");
+                if (partnerPubB64 != null && !partnerPubB64.isEmpty()) {
+                    finalizeConnection(myUid, partnerUid, partnerPubB64, secure, callback);
+                } else if (retriesLeft > 0) {
+                    new Handler(Looper.getMainLooper()).postDelayed(
+                        () -> fetchPartnerKeyWithRetry(
+                                myUid, partnerUid, secure, callback, retriesLeft - 1),
+                        KEY_FETCH_DELAY_MS);
+                } else {
+                    // Partner hasn't uploaded their key yet — connect anyway.
+                    // ECDH will complete once both sides are online.
+                    finalizeConnection(myUid, partnerUid, null, secure, callback);
+                }
+            })
+            .addOnFailureListener(e ->
+                finalizeConnection(myUid, partnerUid, null, secure, callback));
     }
 
-    private void storeSharedKey(String partnerPubB64, SharedPreferences secure) {
-        try {
-            PrivateKey myPrivKey = CryptoInitializer.getMyPrivateKey(context);
-            if (myPrivKey == null) return;
-            SecretKey sharedKey = ECDHHelper.deriveSharedKey(myPrivKey, partnerPubB64);
-            String sharedB64 = Base64.encodeToString(sharedKey.getEncoded(), Base64.NO_WRAP);
-            secure.edit()
-                  .putString(CryptoInitializer.KEY_SHARED_AES, sharedB64)
-                  .putString(CryptoInitializer.KEY_PARTNER_EC_PUBLIC, partnerPubB64)
-                  .apply();
-        } catch (Exception ignored) {}
+    // ── Steps 4–7 — derive key, compute chatId, write Firestore, save prefs ──
+
+    private void finalizeConnection(String myUid, String partnerUid,
+                                    String partnerPubB64,
+                                    SharedPreferences secure,
+                                    PairingCallback callback) {
+        // Step 4 — ECDH shared key derivation
+        if (partnerPubB64 != null) {
+            try {
+                PrivateKey myPrivKey = CryptoInitializer.getMyPrivateKey(context);
+                if (myPrivKey != null) {
+                    SecretKey sharedKey  = ECDHHelper.deriveSharedKey(myPrivKey, partnerPubB64);
+                    String    sharedB64  = Base64.encodeToString(
+                            sharedKey.getEncoded(), Base64.NO_WRAP);
+                    secure.edit()
+                          .putString(CryptoInitializer.KEY_SHARED_AES,        sharedB64)
+                          .putString(CryptoInitializer.KEY_PARTNER_EC_PUBLIC,  partnerPubB64)
+                          .apply();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Step 5 — deterministic chatId: SHA-256(smaller_uid/larger_uid)
+        String chatId = buildChatId(myUid, partnerUid);
+
+        // Step 6 — create / merge chats/{chatId}
+        Map<String, Object> chatDoc = new HashMap<>();
+        chatDoc.put("participants", Arrays.asList(myUid, partnerUid));
+        db.collection("chats").document(chatId)
+            .set(chatDoc, SetOptions.merge());
+
+        // Step 7 — persist locally
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+               .edit()
+               .putBoolean(KEY_IS_PAIRED,   true)
+               .putString(KEY_CONV_ID,      chatId)
+               .putString(KEY_MY_UID,       myUid)
+               .putString(KEY_PARTNER_UID,  partnerUid)
+               .apply();
+
+        callback.onPaired();
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Utility ───────────────────────────────────────────────────────────────
 
-    private String generateCode() {
-        int num = 100000 + new Random().nextInt(900000);
-        return String.valueOf(num);
-    }
-
-    private String buildConversationId(String code, String creatorUid, String joinerUid) {
-        String a = creatorUid.compareTo(joinerUid) < 0 ? creatorUid : joinerUid;
-        String b = creatorUid.compareTo(joinerUid) < 0 ? joinerUid  : creatorUid;
-        String raw = code + "|" + a + "|" + b;
+    /**
+     * Deterministic SHA-256 chat ID from two Firebase UIDs.
+     * Sorts lexicographically so the result is identical regardless of
+     * which user initiates the connection.
+     */
+    public static String buildChatId(String uidA, String uidB) {
+        String a   = uidA.compareTo(uidB) < 0 ? uidA : uidB;
+        String b   = uidA.compareTo(uidB) < 0 ? uidB  : uidA;
+        String raw = a + "/" + b;
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte byt : hash) hex.append(String.format("%02x", byt));
+            StringBuilder hex = new StringBuilder(64);
+            for (byte bt : hash) hex.append(String.format("%02x", bt));
             return hex.toString();
         } catch (Exception e) {
             return raw.replaceAll("[^a-zA-Z0-9]", "");
         }
     }
 
-    private void savePrefs(String myUid, String partnerUid, String convId) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-               .edit()
-               .putBoolean(KEY_IS_PAIRED,   true)
-               .putString(KEY_CONV_ID,      convId)
-               .putString(KEY_MY_UID,       myUid)
-               .putString(KEY_PARTNER_UID,  partnerUid)
-               .apply();
-
-        Map<String, Object> convData = new HashMap<>();
-        convData.put("participants", java.util.Arrays.asList(myUid, partnerUid));
-        db.collection("conversations").document(convId)
-          .set(convData, SetOptions.merge());
-    }
-
-    private void cleanupRoom(String code) {
-        db.collection("rooms").document(code).delete();
-    }
-
-    public void stopListening() {
-        if (roomListener != null) { roomListener.remove(); roomListener = null; }
-    }
+    /** No-op — kept for source compatibility; room system is removed. */
+    public void stopListening() {}
 }
-

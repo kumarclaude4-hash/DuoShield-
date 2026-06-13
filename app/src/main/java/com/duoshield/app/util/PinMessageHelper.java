@@ -13,20 +13,20 @@ public class PinMessageHelper {
         entry.put("id",      msgId);
         entry.put("preview", preview);
         FirebaseFirestore.getInstance()
-            .collection("conversations").document(convId)
+            .collection("chats").document(convId)
             .update("pinnedMessages", FieldValue.arrayUnion(entry))
             .addOnFailureListener(e -> {
                 Map<String, Object> init = new HashMap<>();
                 init.put("pinnedMessages", Arrays.asList(entry));
                 FirebaseFirestore.getInstance()
-                    .collection("conversations").document(convId)
+                    .collection("chats").document(convId)
                     .set(init, SetOptions.merge());
             });
     }
 
     public static void unpin(String convId, Map<String, Object> entry) {
         FirebaseFirestore.getInstance()
-            .collection("conversations").document(convId)
+            .collection("chats").document(convId)
             .update("pinnedMessages", FieldValue.arrayRemove(entry));
     }
 }

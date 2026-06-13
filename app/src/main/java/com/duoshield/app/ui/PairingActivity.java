@@ -18,12 +18,26 @@ import com.duoshield.app.ChatMediaActivity;
 import com.duoshield.app.R;
 import com.duoshield.app.pairing.PairingManager;
 
+/**
+ * "Connect" screen — replaces the old 6-digit-code pairing screen.
+ *
+ * User A shares their DS-XXXXXXXX User ID out-of-band (copy/paste, QR, etc.).
+ * User B enters that ID here → connectByUserId() handles ECDH + chatId derivation.
+ *
+ * Layout reuses activity_pairing.xml view IDs for backwards compatibility:
+ *   tvMyCode       → shows own User ID
+ *   btnCopyCode    → copies own User ID
+ *   etPartnerCode  → input field for partner's User ID
+ *   btnPair        → "Connect" button
+ *   progressPairing→ spinner while connecting
+ */
 public class PairingActivity extends BaseActivity {
 
     private PairingManager pairingManager;
-    private TextView    tvMyCode;
-    private Button      btnCopyCode, btnPair;
-    private EditText    etPartnerCode;
+    private TextView    tvMyUserId;
+    private EditText    etPartnerUserId;
+    private Button      btnCopyMyId;
+    private Button      btnConnect;
     private ProgressBar progressPairing;
 
     @Override
@@ -34,74 +48,77 @@ public class PairingActivity extends BaseActivity {
         Toolbar toolbar = findViewById(R.id.toolbar);
         if (toolbar != null) {
             setSupportActionBar(toolbar);
-            if (getSupportActionBar() != null) getSupportActionBar().setTitle("Pair Device");
+            if (getSupportActionBar() != null)
+                getSupportActionBar().setTitle("Connect");
         }
 
         pairingManager  = new PairingManager(this);
-        tvMyCode        = findViewById(R.id.tvMyCode);
-        btnCopyCode     = findViewById(R.id.btnCopyCode);
-        etPartnerCode   = findViewById(R.id.etPartnerCode);
-        btnPair         = findViewById(R.id.btnPair);
+
+        // Re-use existing layout view IDs so no XML change is required
+        tvMyUserId      = findViewById(R.id.tvMyCode);
+        etPartnerUserId = findViewById(R.id.etPartnerCode);
+        btnCopyMyId     = findViewById(R.id.btnCopyCode);
+        btnConnect      = findViewById(R.id.btnPair);
         progressPairing = findViewById(R.id.progressPairing);
 
-        startCreateRoom();
+        // Show own User ID (DS-XXXXXXXX) from SharedPreferences
+        SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
+        String myUserId = prefs.getString("my_user_id", null);
+        if (tvMyUserId != null) {
+            if (myUserId != null && !myUserId.isEmpty()) {
+                tvMyUserId.setText(myUserId);
+                tvMyUserId.setVisibility(View.VISIBLE);
+            } else {
+                tvMyUserId.setText("—");
+                tvMyUserId.setVisibility(View.VISIBLE);
+            }
+        }
 
-        if (btnCopyCode != null) {
-            btnCopyCode.setOnClickListener(v -> {
-                if (tvMyCode == null) return;
-                String code = tvMyCode.getText().toString().trim();
-                if (code.isEmpty()) return;
-                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("pair_code", code));
-                Toast.makeText(this, "Code copied!", Toast.LENGTH_SHORT).show();
+        // Copy-to-clipboard button
+        if (btnCopyMyId != null) {
+            btnCopyMyId.setOnClickListener(v -> {
+                if (tvMyUserId == null) return;
+                String id = tvMyUserId.getText().toString().trim();
+                if (id.isEmpty() || "—".equals(id)) return;
+                ClipboardManager cm =
+                        (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("user_id", id));
+                Toast.makeText(this, "User ID copied!", Toast.LENGTH_SHORT).show();
             });
         }
 
-        if (btnPair != null) {
-            btnPair.setOnClickListener(v -> {
-                if (etPartnerCode == null) return;
-                String code = etPartnerCode.getText().toString().trim();
-                if (code.length() != 6) {
-                    Toast.makeText(this, "Enter the full 6-digit code.", Toast.LENGTH_SHORT).show();
+        // Connect button
+        if (btnConnect != null) {
+            btnConnect.setOnClickListener(v -> {
+                if (etPartnerUserId == null) return;
+                String partnerId = etPartnerUserId.getText() != null
+                        ? etPartnerUserId.getText().toString().trim() : "";
+                if (partnerId.isEmpty()) {
+                    Toast.makeText(this,
+                            "Enter your partner's User ID (DS-XXXXXXXX).",
+                            Toast.LENGTH_SHORT).show();
                     return;
                 }
-                // Duress check removed from PairingActivity (#34) — belongs only in LockScreenActivity
-                startJoinRoom(code);
+                startConnect(partnerId);
             });
         }
     }
 
-    private void startCreateRoom() {
+    private void startConnect(String partnerId) {
         showLoading(true);
-        pairingManager.createRoom(new PairingManager.PairingCallback() {
-            @Override public void onCodeGenerated(String code) {
-                runOnUiThread(() -> {
-                    showLoading(false);
-                    if (tvMyCode != null) { tvMyCode.setText(code); tvMyCode.setVisibility(View.VISIBLE); }
-                });
-            }
-            @Override public void onWaitingForPartner() {}
-            @Override public void onPaired() { runOnUiThread(() -> goToChat()); }
-            @Override public void onError(String message) {
-                runOnUiThread(() -> {
-                    showLoading(false);
-                    Toast.makeText(PairingActivity.this, message, Toast.LENGTH_LONG).show();
-                });
-            }
-        });
-    }
+        if (btnConnect != null) btnConnect.setEnabled(false);
 
-    private void startJoinRoom(String code) {
-        showLoading(true);
-        if (btnPair != null) btnPair.setEnabled(false);
-        pairingManager.joinRoom(code, new PairingManager.PairingCallback() {
-            @Override public void onCodeGenerated(String c) {}
-            @Override public void onWaitingForPartner() {}
-            @Override public void onPaired() { runOnUiThread(() -> goToChat()); }
-            @Override public void onError(String message) {
+        pairingManager.connectByUserId(partnerId, new PairingManager.PairingCallback() {
+            @Override
+            public void onPaired() {
+                runOnUiThread(() -> goToChat());
+            }
+
+            @Override
+            public void onError(String message) {
                 runOnUiThread(() -> {
                     showLoading(false);
-                    if (btnPair != null) btnPair.setEnabled(true);
+                    if (btnConnect != null) btnConnect.setEnabled(true);
                     Toast.makeText(PairingActivity.this, message, Toast.LENGTH_LONG).show();
                 });
             }
@@ -109,14 +126,15 @@ public class PairingActivity extends BaseActivity {
     }
 
     private void goToChat() {
-        SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
-        prefs.edit().putBoolean("is_paired", true).apply();
+        getSharedPreferences("duoshield_prefs", MODE_PRIVATE)
+                .edit().putBoolean("is_paired", true).apply();
         startActivity(new Intent(this, ChatMediaActivity.class)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
         finish();
     }
 
     private void showLoading(boolean show) {
-        if (progressPairing != null) progressPairing.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (progressPairing != null)
+            progressPairing.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 }

@@ -199,14 +199,14 @@ public class ChatMediaActivity extends BaseActivity {
         headerOnlineDot  = findViewById(R.id.headerOnlineDot);
 
         ImageView btnBack = findViewById(R.id.btnBack);
-        btnBack.setOnClickListener(v -> onBackPressed());
+        if (btnBack != null) btnBack.setOnClickListener(v -> onBackPressed());
 
         ImageView btnFingerprint = findViewById(R.id.btnFingerprint);
-        btnFingerprint.setOnClickListener(v ->
+        if (btnFingerprint != null) btnFingerprint.setOnClickListener(v ->
             startActivity(new Intent(this, KeyFingerprintActivity.class)));
 
         ImageView btnOverflow = findViewById(R.id.btnOverflow);
-        btnOverflow.setOnClickListener(v -> {
+        if (btnOverflow != null) btnOverflow.setOnClickListener(v -> {
             PopupMenu popup = new PopupMenu(this, v);
             popup.getMenu().add(0, 1, 0, "Settings");
             popup.getMenu().add(0, 2, 0, "Set Wallpaper");
@@ -245,6 +245,17 @@ public class ChatMediaActivity extends BaseActivity {
         cancelRecordingBtn = findViewById(R.id.cancelRecordingBtn);
         stopRecordingBtn   = findViewById(R.id.stopRecordingBtn);
 
+        // ── Critical-view null guard ─────────────────────────────────────────
+        // If the layout is missing any of these we cannot function — bail safely.
+        if (recyclerView == null || messageInput == null
+                || sendButton == null || micButton == null) {
+            Toast.makeText(this,
+                    "Chat layout failed to load. Please reinstall the app.",
+                    Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
+
         adapter = new MessageAdapter(new ArrayList<>(), myUid, this::onVoicePlay,
             (msg, anchor) -> showMessageActionDialog(msg));
         LinearLayoutManager llm = new LinearLayoutManager(this);
@@ -261,14 +272,15 @@ public class ChatMediaActivity extends BaseActivity {
         listenForConvUpdates();
 
         sendButton.setOnClickListener(v -> {
-            String text = messageInput.getText().toString().trim();
+            String text = messageInput.getText() != null
+                    ? messageInput.getText().toString().trim() : "";
             if (!text.isEmpty()) { sendMessage(text); messageInput.setText(""); }
         });
-        uploadButton.setOnClickListener(v -> showMediaTypePopup());
+        if (uploadButton    != null) uploadButton.setOnClickListener(v -> showMediaTypePopup());
         micButton.setOnClickListener(v -> startVoiceRecording());
-        cancelReplyBtn.setOnClickListener(v -> clearReplyMode());
-        cancelRecordingBtn.setOnClickListener(v -> cancelVoiceRecording());
-        stopRecordingBtn.setOnClickListener(v -> stopAndSendVoiceRecording());
+        if (cancelReplyBtn  != null) cancelReplyBtn.setOnClickListener(v -> clearReplyMode());
+        if (cancelRecordingBtn != null) cancelRecordingBtn.setOnClickListener(v -> cancelVoiceRecording());
+        if (stopRecordingBtn   != null) stopRecordingBtn.setOnClickListener(v -> stopAndSendVoiceRecording());
 
         messageInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
@@ -281,8 +293,9 @@ public class ChatMediaActivity extends BaseActivity {
             }
         });
 
-        pinnedBanner.setOnClickListener(v -> cycleAndScrollToPin());
-        pinnedCloseBtn.setOnClickListener(v -> pinnedBanner.setVisibility(View.GONE));
+        if (pinnedBanner   != null) pinnedBanner.setOnClickListener(v -> cycleAndScrollToPin());
+        if (pinnedCloseBtn != null && pinnedBanner != null)
+            pinnedCloseBtn.setOnClickListener(v -> pinnedBanner.setVisibility(View.GONE));
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -447,7 +460,7 @@ public class ChatMediaActivity extends BaseActivity {
         doc.put("mediaUrl", mediaUrl); doc.put("mediaType", "voice");
         doc.put("type", "voice"); doc.put("isEncrypted", false);
         doc.put("expiresAt", exp); doc.put("timestamp", FieldValue.serverTimestamp());
-        db.collection("conversations").document(conversationId)
+        db.collection("chats").document(conversationId)
           .collection("messages").document(msgId).set(doc)
           .addOnSuccessListener(v -> {
               Message m = new Message(msgId, conversationId, myUid, "", now, false, mediaUrl, "voice");
@@ -537,7 +550,7 @@ public class ChatMediaActivity extends BaseActivity {
         recordingTimerHandler.removeCallbacks(timerTick);
         player.release();
         if (isTyping && conversationId != null && myUid != null) {
-            db.collection("conversations").document(conversationId)
+            db.collection("chats").document(conversationId)
               .update("typing_" + myUid, false);
             isTyping = false;
         }
@@ -548,7 +561,7 @@ public class ChatMediaActivity extends BaseActivity {
     // ══════════════════════════════════════════════════════════════
 
     private void listenForConvUpdates() {
-        convListener = db.collection("conversations").document(conversationId)
+        convListener = db.collection("chats").document(conversationId)
           .addSnapshotListener((snap, e) -> {
               if (snap == null) return;
 
@@ -586,7 +599,7 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     private void listenForMessages() {
-        msgListener = db.collection("conversations").document(conversationId)
+        msgListener = db.collection("chats").document(conversationId)
           .collection("messages").orderBy("timestamp")
           .addSnapshotListener((snaps, e) -> {
               if (snaps == null) return;
@@ -667,13 +680,14 @@ public class ChatMediaActivity extends BaseActivity {
     // ══════════════════════════════════════════════════════════════
 
     private void refreshPinnedBanner() {
+        if (pinnedBanner == null) return;
         if (pinnedList.isEmpty()) { pinnedBanner.setVisibility(View.GONE); return; }
         pinnedBanner.setVisibility(View.VISIBLE);
         if (pinnedViewIdx >= pinnedList.size()) pinnedViewIdx = 0;
         Map<String, Object> pin = pinnedList.get(pinnedViewIdx);
         Object preview = pin.get("preview");
-        pinnedText.setText(preview != null ? preview.toString() : "Pinned message");
-        pinnedCount.setText(pinnedList.size() > 1 ? (pinnedViewIdx + 1) + "/" + pinnedList.size() : "");
+        if (pinnedText  != null) pinnedText.setText(preview != null ? preview.toString() : "Pinned message");
+        if (pinnedCount != null) pinnedCount.setText(pinnedList.size() > 1 ? (pinnedViewIdx + 1) + "/" + pinnedList.size() : "");
     }
 
     private void cycleAndScrollToPin() {
@@ -697,12 +711,12 @@ public class ChatMediaActivity extends BaseActivity {
         if (pinnedList.size() >= MAX_PINS) { Toast.makeText(this, "Max " + MAX_PINS + " pins", Toast.LENGTH_SHORT).show(); return; }
         String preview = (msg.getText() != null && !msg.getText().isEmpty()) ? msg.getText() : "[media]";
         Map<String, Object> entry = new HashMap<>(); entry.put("id", msg.getId()); entry.put("preview", preview);
-        db.collection("conversations").document(conversationId)
+        db.collection("chats").document(conversationId)
           .update("pinnedMessages", FieldValue.arrayUnion(entry))
           .addOnSuccessListener(v -> Toast.makeText(this, "Pinned 📌", Toast.LENGTH_SHORT).show())
           .addOnFailureListener(ex -> {
               Map<String, Object> d = new HashMap<>(); d.put("pinnedMessages", Arrays.asList(entry));
-              db.collection("conversations").document(conversationId)
+              db.collection("chats").document(conversationId)
                 .set(d, com.google.firebase.firestore.SetOptions.merge())
                 .addOnSuccessListener(v2 -> Toast.makeText(this, "Pinned 📌", Toast.LENGTH_SHORT).show());
           });
@@ -712,7 +726,7 @@ public class ChatMediaActivity extends BaseActivity {
         Map<String, Object> toRemove = null;
         for (Map<String, Object> p : pinnedList) if (msg.getId().equals(p.get("id"))) { toRemove = p; break; }
         if (toRemove == null) { Toast.makeText(this, "Not pinned", Toast.LENGTH_SHORT).show(); return; }
-        db.collection("conversations").document(conversationId)
+        db.collection("chats").document(conversationId)
           .update("pinnedMessages", FieldValue.arrayRemove(toRemove))
           .addOnSuccessListener(v -> Toast.makeText(this, "Unpinned", Toast.LENGTH_SHORT).show());
     }
@@ -750,7 +764,7 @@ public class ChatMediaActivity extends BaseActivity {
         String[] emojis = {"👍", "❤️", "😂", "😮", "😢", "🙏"};
         new AlertDialog.Builder(this).setTitle("React")
             .setItems(emojis, (d, w) -> {
-                db.collection("conversations").document(conversationId)
+                db.collection("chats").document(conversationId)
                   .collection("messages").document(msg.getId()).update("reaction", emojis[w]);
                 adapter.updateMessage(msg.getId(), m -> m.setReaction(emojis[w]));
             }).show();
@@ -763,12 +777,12 @@ public class ChatMediaActivity extends BaseActivity {
     private void onUserTyping() {
         if (!isTyping) {
             isTyping = true;
-            db.collection("conversations").document(conversationId).update("typing_" + myUid, true);
+            db.collection("chats").document(conversationId).update("typing_" + myUid, true);
         }
         typingHandler.removeCallbacksAndMessages(null);
         typingHandler.postDelayed(() -> {
             isTyping = false;
-            db.collection("conversations").document(conversationId).update("typing_" + myUid, false);
+            db.collection("chats").document(conversationId).update("typing_" + myUid, false);
         }, 3000);
     }
 
@@ -880,7 +894,7 @@ public class ChatMediaActivity extends BaseActivity {
         doc.put("mediaUrl", mediaUrl); doc.put("mediaType", mediaType);
         doc.put("isEncrypted", false); doc.put("type", mediaType);
         doc.put("expiresAt", exp); doc.put("timestamp", FieldValue.serverTimestamp());
-        db.collection("conversations").document(conversationId)
+        db.collection("chats").document(conversationId)
           .collection("messages").document(msgId).set(doc)
           .addOnSuccessListener(v -> {
               Message m = new Message(msgId, conversationId, myUid, "", now, false, mediaUrl, mediaType);
@@ -897,7 +911,7 @@ public class ChatMediaActivity extends BaseActivity {
         doc.put("sender", myUid); doc.put("text", cardText);
         doc.put("mediaType", "contact_card"); doc.put("type", "contact_card");
         doc.put("isEncrypted", false); doc.put("timestamp", FieldValue.serverTimestamp());
-        db.collection("conversations").document(conversationId)
+        db.collection("chats").document(conversationId)
           .collection("messages").document(msgId).set(doc)
           .addOnSuccessListener(v -> {
               saveToRoom(new Message(msgId, conversationId, myUid, cardText, now, false, null, "contact_card"));
@@ -932,7 +946,7 @@ public class ChatMediaActivity extends BaseActivity {
         if (rId != null) { doc.put("replyToId", rId); doc.put("replyPreview", rPrv); }
         doc.put("timestamp", FieldValue.serverTimestamp());
         final String fc = ciphertext;
-        db.collection("conversations").document(conversationId)
+        db.collection("chats").document(conversationId)
           .collection("messages").document(msgId).set(doc)
           .addOnSuccessListener(v -> {
               Message m = new Message(msgId, conversationId, myUid, fc, now, true);
@@ -946,7 +960,7 @@ public class ChatMediaActivity extends BaseActivity {
 
     private void markAsSeen() {
         if (conversationId == null || myUid == null) return;
-        db.collection("conversations").document(conversationId)
+        db.collection("chats").document(conversationId)
           .update("lastSeen_" + myUid, FieldValue.serverTimestamp());
     }
 

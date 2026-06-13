@@ -77,7 +77,7 @@ public class DuressManager {
 
     private static void deleteFirestoreMessages(String conversationId) {
         FirebaseFirestore db = FirebaseFirestore.getInstance();
-        db.collection("conversations")
+        db.collection("chats")
           .document(conversationId)
           .collection("messages")
           .get()

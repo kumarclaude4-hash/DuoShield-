@@ -101,7 +101,15 @@ public class SignInActivity extends AppCompatActivity {
         if (!validateSignIn(email, pass)) return;
         setLoading(true);
         mAuth.signInWithEmailAndPassword(email, pass)
-                .addOnSuccessListener(r -> { setLoading(false); route(r.getUser().getUid()); })
+                .addOnSuccessListener(r -> {
+                    setLoading(false);
+                    FirebaseUser u = r.getUser();
+                    if (u == null) {
+                        showError(getString(R.string.error_generic));
+                        return;
+                    }
+                    route(u.getUid());
+                })
                 .addOnFailureListener(e -> { setLoading(false); showError(friendlyError(e.getMessage())); });
     }
 
@@ -115,10 +123,14 @@ public class SignInActivity extends AppCompatActivity {
         mAuth.createUserWithEmailAndPassword(email, pass)
                 .addOnSuccessListener(r -> {
                     setLoading(false);
-                    String uid          = r.getUser().getUid();
+                    FirebaseUser u = r.getUser();
+                    if (u == null) {
+                        showError(getString(R.string.error_generic));
+                        return;
+                    }
+                    String uid          = u.getUid();
                     String userId       = RecoveryHelper.generateUserId();
                     String recoveryCode = RecoveryHelper.generateRecoveryCode();
-                    // Show both identifiers before persisting
                     showRecoveryDialog(email, pass, userId, recoveryCode, uid);
                 })
                 .addOnFailureListener(e -> { setLoading(false); showError(friendlyError(e.getMessage())); });

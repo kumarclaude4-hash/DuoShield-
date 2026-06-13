@@ -41,7 +41,12 @@ public class ConversationListActivity extends BaseActivity {
         setContentView(R.layout.activity_conversation_list);
 
         SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
-        myUid          = prefs.getString("my_uid", FirebaseAuth.getInstance().getUid());
+        myUid = prefs.getString("my_uid", null);
+        if (myUid == null) {
+            com.google.firebase.auth.FirebaseUser fu =
+                    FirebaseAuth.getInstance().getCurrentUser();
+            if (fu != null) myUid = fu.getUid();
+        }
         conversationId = prefs.getString("conversation_id", null);
 
         recyclerView = findViewById(R.id.recyclerConversations);
@@ -106,7 +111,7 @@ public class ConversationListActivity extends BaseActivity {
     private void listenForConversation() {
         if (conversationId == null) { showEmpty(true); return; }
 
-        listener = db.collection("conversations").document(conversationId)
+        listener = db.collection("chats").document(conversationId)
             .addSnapshotListener((snap, e) -> {
                 if (snap == null || !snap.exists()) return;
                 SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);

@@ -69,7 +69,7 @@ public class SelfDestructWorker extends Worker {
 
         // Firestore server timestamps compare cleanly against java.util.Date
         QuerySnapshot snapshots = Tasks.await(
-                firestore.collection("conversations")
+                firestore.collection("chats")
                          .document(conversationId)
                          .collection("messages")
                          .whereLessThan("timestamp", new Date(cutoff))

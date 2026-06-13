@@ -21,7 +21,7 @@ public class ConversationMetaUpdater {
             data.put("unread_" + recipientUid, FieldValue.increment(1));
         }
         FirebaseFirestore.getInstance()
-            .collection("conversations").document(convId)
+            .collection("chats").document(convId)
             .set(data, SetOptions.merge());
     }
 }

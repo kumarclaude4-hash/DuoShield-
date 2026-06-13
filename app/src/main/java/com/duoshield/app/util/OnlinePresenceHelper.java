@@ -13,7 +13,7 @@ public class OnlinePresenceHelper {
         Map<String, Object> data = new HashMap<>();
         data.put("online_" + myUid, true);
         FirebaseFirestore.getInstance()
-            .collection("conversations").document(convId)
+            .collection("chats").document(convId)
             .set(data, SetOptions.merge());
     }
 
@@ -23,7 +23,7 @@ public class OnlinePresenceHelper {
         data.put("online_"   + myUid, false);
         data.put("lastSeen_" + myUid, FieldValue.serverTimestamp());
         FirebaseFirestore.getInstance()
-            .collection("conversations").document(convId)
+            .collection("chats").document(convId)
             .set(data, SetOptions.merge());
     }
 }

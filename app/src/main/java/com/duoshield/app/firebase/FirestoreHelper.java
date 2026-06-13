@@ -27,7 +27,7 @@ public class FirestoreHelper {
         message.put("timestamp",      timestamp);
         message.put("selfDestructAt", timestamp + ttlMinutes * 60_000L);
 
-        db.collection("conversations")
+        db.collection("chats")
           .document(conversationId)
           .collection("messages")
           .add(message)

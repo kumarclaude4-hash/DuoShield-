@@ -16,7 +16,7 @@ public class DeliveryReceiptHelper {
             if (!myUid.equals(m.getSender()) && !"delivered".equals(m.getStatus())
                     && !"read".equals(m.getStatus())) {
                 batch.update(
-                    db.collection("conversations").document(convId)
+                    db.collection("chats").document(convId)
                       .collection("messages").document(m.getId()),
                     "status", "delivered");
                 if (++count == 450) {

@@ -32,7 +32,7 @@ public class PresenceThrottle {
     private void write(boolean value) {
         if (convId == null) return;
         FirebaseFirestore.getInstance()
-            .collection("conversations").document(convId)
+            .collection("chats").document(convId)
             .update("typing_" + myUid, value);
     }
 

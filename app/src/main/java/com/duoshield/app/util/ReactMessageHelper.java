@@ -11,7 +11,7 @@ public class ReactMessageHelper {
         update.put("reactions." + emoji, FieldValue.arrayUnion(myUid));
         update.put("reaction", emoji);
         FirebaseFirestore.getInstance()
-            .collection("conversations").document(convId)
+            .collection("chats").document(convId)
             .collection("messages").document(msgId)
             .update(update);
     }

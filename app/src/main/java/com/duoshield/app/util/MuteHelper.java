@@ -10,7 +10,7 @@ public class MuteHelper {
         if (convId == null) return;
         Map<String, Object> d = new HashMap<>();
         d.put("muted_" + myUid, muted);
-        FirebaseFirestore.getInstance().collection("conversations").document(convId)
+        FirebaseFirestore.getInstance().collection("chats").document(convId)
             .set(d, SetOptions.merge());
     }
 }
