@@ -51,8 +51,7 @@ import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.ListenerRegistration;
-import com.google.firebase.storage.FirebaseStorage;
-import com.google.firebase.storage.StorageReference;
+import com.duoshield.app.util.SupabaseStorageHelper;
 
 import org.json.JSONObject;
 
@@ -99,7 +98,6 @@ public class ChatMediaActivity extends BaseActivity {
     private int                       pinnedViewIdx = 0;
 
     private FirebaseFirestore db;
-    private StorageReference  storageRef;
 
     // Header views
     private ImageView    ivPartnerAvatar;
@@ -264,7 +262,6 @@ public class ChatMediaActivity extends BaseActivity {
         recyclerView.setAdapter(adapter);
 
         db         = FirebaseFirestore.getInstance();
-        storageRef = FirebaseStorage.getInstance().getReference();
 
         applyWallpaper();
         loadPartnerInfo();
@@ -430,40 +427,64 @@ public class ChatMediaActivity extends BaseActivity {
     private void uploadVoiceNote(String filePath, List<Integer> amplitudes) {
         File f = new File(filePath);
         if (!f.exists()) return;
-        Uri fileUri = Uri.fromFile(f);
-        StorageReference ref = storageRef.child("voice").child(conversationId)
-            .child(UUID.randomUUID() + ".3gp");
         runOnUiThread(() -> { uploadProgress.setVisibility(View.VISIBLE); uploadProgress.setProgress(0); });
-        ref.putFile(fileUri)
-            .addOnProgressListener(s -> {
-                int pct = (int) (100.0 * s.getBytesTransferred() / s.getTotalByteCount());
-                runOnUiThread(() -> uploadProgress.setProgress(pct));
-            })
-            .addOnSuccessListener(s -> ref.getDownloadUrl().addOnSuccessListener(uri -> {
+        String path = "voice/" + conversationId + "/" + UUID.randomUUID() + ".3gp";
+        executor.execute(() -> {
+            try {
+                byte[] data = readFileBytes(f);
+                data = SupabaseStorageHelper.encryptBeforeUpload(data);
+                String storagePath = SupabaseStorageHelper.uploadFile(
+                        data, path, "audio/3gpp",
+                        pct -> runOnUiThread(() -> uploadProgress.setProgress(pct)));
                 runOnUiThread(() -> uploadProgress.setVisibility(View.GONE));
-                sendVoiceMessage(uri.toString());
+                sendVoiceMessage(storagePath);
                 f.delete();
-            }))
-            .addOnFailureListener(e -> runOnUiThread(() -> {
-                uploadProgress.setVisibility(View.GONE);
-                Toast.makeText(this, "Voice upload failed", Toast.LENGTH_SHORT).show();
-            }));
+            } catch (Exception e) {
+                Log.e(TAG, "Voice upload failed", e);
+                runOnUiThread(() -> {
+                    uploadProgress.setVisibility(View.GONE);
+                    Toast.makeText(ChatMediaActivity.this, "Voice upload failed", Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
     }
 
-    private void sendVoiceMessage(String mediaUrl) {
+    private static byte[] readFileBytes(File f) throws java.io.IOException {
+        try (java.io.FileInputStream fis = new java.io.FileInputStream(f);
+             java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = fis.read(buf)) != -1) baos.write(buf, 0, n);
+            return baos.toByteArray();
+        }
+    }
+
+    private byte[] readUriBytes(Uri uri) throws java.io.IOException {
+        java.io.InputStream is = getContentResolver().openInputStream(uri);
+        if (is == null) throw new java.io.IOException("Cannot open URI: " + uri);
+        try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = is.read(buf)) != -1) baos.write(buf, 0, n);
+            return baos.toByteArray();
+        } finally { is.close(); }
+    }
+
+    private void sendVoiceMessage(String storagePath) {
         String msgId = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
         long exp = getDisappearMs() > 0 ? now + getDisappearMs() : 0;
         Map<String, Object> doc = new HashMap<>();
         doc.put("id", msgId); doc.put("conversationId", conversationId);
         doc.put("sender", myUid); doc.put("text", "");
-        doc.put("mediaUrl", mediaUrl); doc.put("mediaType", "voice");
+        doc.put("path", storagePath);           // private path — NOT a public URL
+        doc.put("mediaType", "voice");
         doc.put("type", "voice"); doc.put("isEncrypted", false);
         doc.put("expiresAt", exp); doc.put("timestamp", FieldValue.serverTimestamp());
         db.collection("chats").document(conversationId)
           .collection("messages").document(msgId).set(doc)
           .addOnSuccessListener(v -> {
-              Message m = new Message(msgId, conversationId, myUid, "", now, false, mediaUrl, "voice");
+              Message m = new Message(msgId, conversationId, myUid, "", now, false, storagePath, "voice");
               m.setExpiresAt(exp);
               saveToRoom(m);
               notifyPartner("DuoShield", "Sent a voice note");
@@ -488,7 +509,7 @@ public class ChatMediaActivity extends BaseActivity {
         adapter.setPlayingMessageId(msg.getId());
         playPauseBtn.setImageResource(android.R.drawable.ic_media_pause);
 
-        player.play(msg.getMediaUrl(), new VoiceMessagePlayer.PlayerListener() {
+        VoiceMessagePlayer.PlayerListener listener = new VoiceMessagePlayer.PlayerListener() {
             @Override public void onStart(int durationMs) {
                 runOnUiThread(() -> durationView.setText(MessageAdapter.formatDuration(durationMs)));
             }
@@ -511,7 +532,32 @@ public class ChatMediaActivity extends BaseActivity {
                     playPauseBtn.setImageResource(R.drawable.ic_play_video);
                 });
             }
-        });
+        };
+
+        String voiceRef = msg.getMediaUrl();
+        if (SupabaseStorageHelper.isSupabasePath(voiceRef)) {
+            // Resolve a fresh signed URL just before playback starts
+            SupabaseStorageHelper.resolveSignedUrl(voiceRef, new SupabaseStorageHelper.SignedUrlCallback() {
+                @Override public void onSuccess(String signedUrl) {
+                    // Guard: user may have tapped stop while the URL was resolving
+                    if (msg.getId().equals(currentlyPlayingId)) {
+                        player.play(signedUrl, listener);
+                    }
+                }
+                @Override public void onFailure(Exception e) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(ChatMediaActivity.this,
+                                "Couldn't load voice note", Toast.LENGTH_SHORT).show();
+                        currentlyPlayingId = null;
+                        adapter.setPlayingMessageId(null);
+                        playPauseBtn.setImageResource(R.drawable.ic_play_video);
+                    });
+                }
+            });
+        } else {
+            // Legacy Firebase Storage URL — play directly
+            player.play(voiceRef, listener);
+        }
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -610,7 +656,9 @@ public class ChatMediaActivity extends BaseActivity {
                       String convo = dc.getDocument().getString("conversationId");
                       String from  = dc.getDocument().getString("sender");
                       String text  = dc.getDocument().getString("text");
-                      String mUrl  = dc.getDocument().getString("mediaUrl");
+                      // "path" = Supabase private path (new); "mediaUrl" = legacy Firebase URL
+                      String mUrl  = dc.getDocument().getString("path");
+                      if (mUrl == null) mUrl = dc.getDocument().getString("mediaUrl");
                       String mType = dc.getDocument().getString("mediaType");
                       String rpId  = dc.getDocument().getString("replyToId");
                       String rpPrv = dc.getDocument().getString("replyPreview");
@@ -872,32 +920,45 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     private void uploadMedia(Uri fileUri, String mediaType) {
-        String ext = "video".equals(mediaType) ? ".mp4" : ".jpg";
-        StorageReference ref = storageRef.child("media").child(conversationId).child(UUID.randomUUID() + ext);
-        uploadProgress.setVisibility(View.VISIBLE); uploadProgress.setProgress(0);
-        ref.putFile(fileUri)
-            .addOnProgressListener(s -> uploadProgress.setProgress(
-                (int) (100.0 * s.getBytesTransferred() / s.getTotalByteCount())))
-            .addOnFailureListener(e -> { Toast.makeText(this, "Upload failed", Toast.LENGTH_SHORT).show(); uploadProgress.setVisibility(View.GONE); })
-            .addOnSuccessListener(s -> ref.getDownloadUrl().addOnSuccessListener(uri -> {
-                uploadProgress.setVisibility(View.GONE);
-                sendMediaMessage(uri.toString(), mediaType);
-            }).addOnFailureListener(e -> uploadProgress.setVisibility(View.GONE)));
+        runOnUiThread(() -> { uploadProgress.setVisibility(View.VISIBLE); uploadProgress.setProgress(0); });
+        String ext  = "video".equals(mediaType) ? ".mp4" : ".jpg";
+        String mime = "video".equals(mediaType) ? "video/mp4" : "image/jpeg";
+        String path = "media/" + conversationId + "/" + UUID.randomUUID() + ext;
+        executor.execute(() -> {
+            try {
+                byte[] data = readUriBytes(fileUri);
+                data = SupabaseStorageHelper.encryptBeforeUpload(data);
+                String storagePath = SupabaseStorageHelper.uploadFile(
+                        data, path, mime,
+                        pct -> runOnUiThread(() -> uploadProgress.setProgress(pct)));
+                runOnUiThread(() -> {
+                    uploadProgress.setVisibility(View.GONE);
+                    sendMediaMessage(storagePath, mediaType);
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Media upload failed", e);
+                runOnUiThread(() -> {
+                    uploadProgress.setVisibility(View.GONE);
+                    Toast.makeText(ChatMediaActivity.this, "Upload failed", Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
     }
 
-    private void sendMediaMessage(String mediaUrl, String mediaType) {
+    private void sendMediaMessage(String storagePath, String mediaType) {
         String msgId = UUID.randomUUID().toString(); long now = System.currentTimeMillis();
         long exp = getDisappearMs() > 0 ? now + getDisappearMs() : 0;
         Map<String, Object> doc = new HashMap<>();
         doc.put("id", msgId); doc.put("conversationId", conversationId);
         doc.put("sender", myUid); doc.put("text", "");
-        doc.put("mediaUrl", mediaUrl); doc.put("mediaType", mediaType);
+        doc.put("path", storagePath);           // private path — NOT a public URL
+        doc.put("mediaType", mediaType);
         doc.put("isEncrypted", false); doc.put("type", mediaType);
         doc.put("expiresAt", exp); doc.put("timestamp", FieldValue.serverTimestamp());
         db.collection("chats").document(conversationId)
           .collection("messages").document(msgId).set(doc)
           .addOnSuccessListener(v -> {
-              Message m = new Message(msgId, conversationId, myUid, "", now, false, mediaUrl, mediaType);
+              Message m = new Message(msgId, conversationId, myUid, "", now, false, storagePath, mediaType);
               m.setExpiresAt(exp); saveToRoom(m);
               notifyPartner("DuoShield", "video".equals(mediaType) ? "Sent a video 🎬" : "Sent a photo 🖼");
           });

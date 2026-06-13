@@ -24,6 +24,7 @@ import com.duoshield.app.models.Message;
 import com.duoshield.app.util.DateHeaderHelper;
 import com.duoshield.app.util.LinkPreviewFetcher;
 import com.duoshield.app.util.LinkPreviewHelper;
+import com.duoshield.app.util.SupabaseStorageHelper;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -201,14 +202,45 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         // ── Content ─────────────────────────────────────────────────
         if ("video".equals(type)) {
             h.videoContainer.setVisibility(View.VISIBLE);
-            Glide.with(ctx).load(msg.getMediaUrl())
-                 .placeholder(R.drawable.ic_play_video).centerCrop().into(h.videoThumbnail);
-            h.videoContainer.setOnClickListener(v -> {
-                Intent i = new Intent(Intent.ACTION_VIEW);
-                i.setDataAndType(Uri.parse(msg.getMediaUrl()), "video/*");
-                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                ctx.startActivity(Intent.createChooser(i, "Play video"));
-            });
+            String vidRef = msg.getMediaUrl();
+            if (SupabaseStorageHelper.isSupabasePath(vidRef)) {
+                // Load thumbnail via signed URL; guard against recycled ViewHolder
+                h.videoThumbnail.setTag(vidRef);
+                Glide.with(ctx).load(R.drawable.ic_play_video).into(h.videoThumbnail);
+                SupabaseStorageHelper.resolveSignedUrl(vidRef, new SupabaseStorageHelper.SignedUrlCallback() {
+                    @Override public void onSuccess(String url) {
+                        if (vidRef.equals(h.videoThumbnail.getTag())) {
+                            Glide.with(ctx).load(url)
+                                 .placeholder(R.drawable.ic_play_video).centerCrop()
+                                 .into(h.videoThumbnail);
+                        }
+                    }
+                    @Override public void onFailure(Exception e) { /* keep play-icon placeholder */ }
+                });
+                // Resolve a fresh signed URL at tap time (TTL may have elapsed since bind)
+                h.videoContainer.setOnClickListener(v ->
+                    SupabaseStorageHelper.resolveSignedUrl(vidRef, new SupabaseStorageHelper.SignedUrlCallback() {
+                        @Override public void onSuccess(String url) {
+                            Intent i = new Intent(Intent.ACTION_VIEW);
+                            i.setDataAndType(Uri.parse(url), "video/*");
+                            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            ctx.startActivity(Intent.createChooser(i, "Play video"));
+                        }
+                        @Override public void onFailure(Exception e) {
+                            Toast.makeText(ctx, "Couldn't load video", Toast.LENGTH_SHORT).show();
+                        }
+                    }));
+            } else {
+                // Legacy Firebase Storage URL
+                Glide.with(ctx).load(vidRef)
+                     .placeholder(R.drawable.ic_play_video).centerCrop().into(h.videoThumbnail);
+                h.videoContainer.setOnClickListener(v -> {
+                    Intent i = new Intent(Intent.ACTION_VIEW);
+                    i.setDataAndType(Uri.parse(vidRef), "video/*");
+                    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    ctx.startActivity(Intent.createChooser(i, "Play video"));
+                });
+            }
 
         } else if ("voice".equals(type)) {
             h.voiceNoteContainer.setVisibility(View.VISIBLE);
@@ -238,8 +270,26 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
 
         } else if (msg.getMediaUrl() != null && !msg.getMediaUrl().isEmpty()) {
             h.imageView.setVisibility(View.VISIBLE);
-            Glide.with(ctx).load(msg.getMediaUrl())
-                 .placeholder(android.R.drawable.ic_menu_gallery).into(h.imageView);
+            String imgRef = msg.getMediaUrl();
+            if (SupabaseStorageHelper.isSupabasePath(imgRef)) {
+                // Tag the view so we can guard against recycled ViewHolders
+                h.imageView.setTag(imgRef);
+                Glide.with(ctx).load(android.R.drawable.ic_menu_gallery).into(h.imageView);
+                SupabaseStorageHelper.resolveSignedUrl(imgRef, new SupabaseStorageHelper.SignedUrlCallback() {
+                    @Override public void onSuccess(String url) {
+                        if (imgRef.equals(h.imageView.getTag())) {
+                            Glide.with(ctx).load(url)
+                                 .placeholder(android.R.drawable.ic_menu_gallery)
+                                 .into(h.imageView);
+                        }
+                    }
+                    @Override public void onFailure(Exception e) { /* keep placeholder */ }
+                });
+            } else {
+                // Legacy Firebase Storage URL
+                Glide.with(ctx).load(imgRef)
+                     .placeholder(android.R.drawable.ic_menu_gallery).into(h.imageView);
+            }
 
         } else {
             // Plain text — show text and check for link preview
