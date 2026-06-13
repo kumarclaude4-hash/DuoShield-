@@ -11,17 +11,20 @@ import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
+import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -32,17 +35,12 @@ import com.duoshield.app.crypto.CryptoInitializer;
 import com.duoshield.app.crypto.KeyManager;
 import com.duoshield.app.db.AppDatabase;
 import com.duoshield.app.models.Message;
-// BiometricHelper removed from direct use here — lock handled by BaseActivity
+import com.duoshield.app.security.BiometricHelper;
 import com.duoshield.app.ui.MessageAdapter;
 import com.duoshield.app.ui.SettingsActivity;
-import com.duoshield.app.ui.WaveformView;
-import com.duoshield.app.util.VoiceMessagePlayer;
-import com.duoshield.app.util.VoiceRecorderHelper;
+import com.duoshield.app.util.EncryptionHelper;
+import com.duoshield.app.util.FirebaseCostGuard;
 import com.google.firebase.auth.FirebaseAuth;
-import java.security.KeyFactory;
-import java.security.PrivateKey;
-import java.security.Signature;
-import java.security.spec.PKCS8EncodedKeySpec;
 import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
@@ -50,20 +48,11 @@ import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 
-import org.json.JSONObject;
-
-import java.io.File;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -74,12 +63,8 @@ import javax.crypto.SecretKey;
 
 public class ChatMediaActivity extends BaseActivity {
 
-    private static final String TAG          = "ChatMediaActivity";
-    private static final String FCM_ENDPOINT =
-            "https://fcm.googleapis.com/v1/projects/duoshield-8caf1/messages:send";
-    private static final String FCM_SCOPE    =
-            "https://www.googleapis.com/auth/firebase.messaging";
-    private static final int    MAX_PINS     = 3;
+    private static final String TAG      = "ChatMediaActivity";
+    private static final int    MAX_PINS = 3;
 
     // Typing debounce
     private final Handler typingHandler = new Handler(Looper.getMainLooper());
@@ -89,54 +74,40 @@ public class ChatMediaActivity extends BaseActivity {
     private String pendingReplyId      = null;
     private String pendingReplyPreview = null;
 
-    // Pinned messages
-    private List<Map<String, Object>> pinnedList    = new ArrayList<>();
+    // Pinned messages: [{id, preview}]
+    private List<Map<String, Object>> pinnedList   = new ArrayList<>();
     private int                       pinnedViewIdx = 0;
 
     private FirebaseFirestore db;
     private StorageReference  storageRef;
+    private EditText          messageInput;
+    private Button            sendButton;
+    private ImageView         uploadButton;
+    private ProgressBar       uploadProgress;
+    private RecyclerView      recyclerView;
+    private TextView          typingIndicator;
+    private View              replyPreviewBar;
+    private TextView          replyPreviewBarText;
+    private ImageView         cancelReplyBtn;
 
-    // Header views
-    private ImageView    ivPartnerAvatar;
-    private TextView     tvAvatarInitial, tvPartnerName, tvOnlineStatus;
-    private View         headerOnlineDot;
-
-    // Chat views
-    private EditText     messageInput;
-    private ImageView    sendButton, uploadButton, micButton;
-    private ProgressBar  uploadProgress;
-    private RecyclerView recyclerView;
-    private LinearLayout typingIndicatorRow;
-    private TextView     typingIndicator;
-    private View         replyPreviewBar;
-    private TextView     replyPreviewBarText;
-    private ImageView    cancelReplyBtn;
-
-    // Pinned banner
+    // Pinned banner views
     private LinearLayout pinnedBanner;
     private TextView     pinnedText, pinnedCount;
     private ImageView    pinnedCloseBtn;
 
-    // Voice recording
-    private View         voiceRecordingBar;
-    private WaveformView recordingWaveform;
-    private TextView     recordingTimer;
-    private ImageView    cancelRecordingBtn, stopRecordingBtn;
-
-    private final VoiceRecorderHelper recorder = new VoiceRecorderHelper();
-    private final VoiceMessagePlayer  player   = new VoiceMessagePlayer();
-    private final Handler recordingTimerHandler = new Handler(Looper.getMainLooper());
-    private int    recordingSeconds    = 0;
-    private String currentlyPlayingId = null;
-
+    private List<Message>  messages;
     private MessageAdapter adapter;
+
     private String conversationId;
     private String myUid;
     private String partnerUid;
 
+    private FirebaseCostGuard costGuard;
+
     private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor();
-    private ListenerRegistration  msgListener;
-    private ListenerRegistration  convListener;
+
+    private ListenerRegistration msgListener;
+    private ListenerRegistration convListener;
 
     private final ActivityResultLauncher<String> pickImageLauncher =
         registerForActivityResult(new ActivityResultContracts.GetContent(),
@@ -153,20 +124,29 @@ public class ChatMediaActivity extends BaseActivity {
                     .putString("wallpaper_type", "image")
                     .putString("wallpaper_uri", uri.toString()).apply();
                 applyWallpaper();
+                Toast.makeText(this, "Wallpaper set!", Toast.LENGTH_SHORT).show();
             }
         });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Lock-screen redirect is handled by BaseActivity.onResume() →
-        // AppLockManager.shouldLock(). Calling BiometricHelper here caused
-        // a silent finish() when no biometrics were enrolled.
-        setupChat();
+        SharedPreferences p = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
+        if (p.getBoolean("biometric_enabled", false)) {
+            BiometricHelper.authenticate(this, new BiometricHelper.AuthCallback() {
+                @Override public void onSuccess() { setupChat(); }
+                @Override public void onFailure() { finish(); }
+            });
+        } else {
+            setupChat();
+        }
     }
 
     private void setupChat() {
         setContentView(R.layout.activity_chat_media);
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        if (getSupportActionBar() != null) getSupportActionBar().setTitle("DuoShield");
 
         SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
         conversationId = prefs.getString("conversation_id", null);
@@ -178,312 +158,51 @@ public class ChatMediaActivity extends BaseActivity {
             finish(); return;
         }
 
-        // ── Header ──────────────────────────────────────────────────
-        ivPartnerAvatar  = findViewById(R.id.ivPartnerAvatar);
-        tvAvatarInitial  = findViewById(R.id.tvAvatarInitial);
-        tvPartnerName    = findViewById(R.id.tvPartnerName);
-        tvOnlineStatus   = findViewById(R.id.tvOnlineStatus);
-        headerOnlineDot  = findViewById(R.id.headerOnlineDot);
+        costGuard = new FirebaseCostGuard(this);
 
-        ImageView btnBack = findViewById(R.id.btnBack);
-        btnBack.setOnClickListener(v -> onBackPressed());
-
-        ImageView btnFingerprint = findViewById(R.id.btnFingerprint);
-        btnFingerprint.setOnClickListener(v ->
-            startActivity(new Intent(this, KeyFingerprintActivity.class)));
-
-        ImageView btnOverflow = findViewById(R.id.btnOverflow);
-        btnOverflow.setOnClickListener(v -> {
-            PopupMenu popup = new PopupMenu(this, v);
-            popup.getMenu().add(0, 1, 0, "Settings");
-            popup.getMenu().add(0, 2, 0, "Set Wallpaper");
-            popup.getMenu().add(0, 3, 0, "Search Messages");
-            popup.setOnMenuItemClickListener(item -> {
-                int id = item.getItemId();
-                if (id == 1) { startActivity(new Intent(this, SettingsActivity.class)); return true; }
-                if (id == 2) { showWallpaperDialog(); return true; }
-                if (id == 3) { startActivity(new Intent(this, MessageSearchActivity.class)); return true; }
-                return false;
-            });
-            popup.show();
-        });
-
-        // ── Chat views ──────────────────────────────────────────────
-        messageInput        = findViewById(R.id.messageInput);
-        sendButton          = findViewById(R.id.sendButton);
-        uploadButton        = findViewById(R.id.uploadButton);
-        micButton           = findViewById(R.id.micButton);
-        uploadProgress      = findViewById(R.id.uploadProgress);
-        recyclerView        = findViewById(R.id.messageRecycler);
-        typingIndicatorRow  = findViewById(R.id.typingIndicatorRow);
-        typingIndicator     = findViewById(R.id.typingIndicator);
+        messageInput        = findViewById(R.id.etMessage);
+        sendButton          = findViewById(R.id.btnSend);
+        uploadButton        = findViewById(R.id.btnAttach);
+        uploadProgress      = null;   // no ProgressBar in layout — all uses null-checked
+        recyclerView        = findViewById(R.id.recyclerMessages);
+        typingIndicator     = null;
         replyPreviewBar     = findViewById(R.id.replyPreviewBar);
-        replyPreviewBarText = findViewById(R.id.replyPreviewBarText);
-        cancelReplyBtn      = findViewById(R.id.cancelReplyBtn);
-        pinnedBanner        = findViewById(R.id.pinnedBanner);
-        pinnedText          = findViewById(R.id.pinnedText);
-        pinnedCount         = findViewById(R.id.pinnedCount);
-        pinnedCloseBtn      = findViewById(R.id.pinnedCloseBtn);
+        replyPreviewBarText = findViewById(R.id.tvReplyPreview);
+        cancelReplyBtn      = findViewById(R.id.btnCancelReply);
+        pinnedBanner        = findViewById(R.id.pinnedStrip);
+        pinnedText          = findViewById(R.id.tvPinnedPreview);
+        pinnedCount         = null;   // no count view in layout — all uses null-checked
+        pinnedCloseBtn      = findViewById(R.id.btnClosePin);
 
-        // Voice recording
-        voiceRecordingBar  = findViewById(R.id.voiceRecordingBar);
-        recordingWaveform  = findViewById(R.id.recordingWaveform);
-        recordingTimer     = findViewById(R.id.recordingTimer);
-        cancelRecordingBtn = findViewById(R.id.cancelRecordingBtn);
-        stopRecordingBtn   = findViewById(R.id.stopRecordingBtn);
-
-        adapter = new MessageAdapter(new ArrayList<>(), myUid, this::onVoicePlay,
+        messages = new ArrayList<>();
+        adapter  = new MessageAdapter(messages, myUid, null,
             (msg, anchor) -> showMessageActionDialog(msg));
-        LinearLayoutManager llm = new LinearLayoutManager(this);
-        llm.setStackFromEnd(true);
-        recyclerView.setLayoutManager(llm);
         recyclerView.setAdapter(adapter);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         db         = FirebaseFirestore.getInstance();
         storageRef = FirebaseStorage.getInstance().getReference();
 
         applyWallpaper();
-        loadPartnerInfo();
         listenForMessages();
-        listenForConvUpdates();
+        listenForPins();
 
         sendButton.setOnClickListener(v -> {
             String text = messageInput.getText().toString().trim();
             if (!text.isEmpty()) { sendMessage(text); messageInput.setText(""); }
         });
         uploadButton.setOnClickListener(v -> showMediaTypePopup());
-        micButton.setOnClickListener(v -> startVoiceRecording());
         cancelReplyBtn.setOnClickListener(v -> clearReplyMode());
-        cancelRecordingBtn.setOnClickListener(v -> cancelVoiceRecording());
-        stopRecordingBtn.setOnClickListener(v -> stopAndSendVoiceRecording());
 
         messageInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+            @Override public void onTextChanged(CharSequence s, int st, int b, int c) { onUserTyping(); }
             @Override public void afterTextChanged(Editable s) {}
-            @Override public void onTextChanged(CharSequence s, int st, int b, int c) {
-                onUserTyping();
-                boolean hasText = s.length() > 0;
-                sendButton.setVisibility(hasText ? View.VISIBLE : View.GONE);
-                micButton.setVisibility(hasText  ? View.GONE   : View.VISIBLE);
-            }
         });
 
         pinnedBanner.setOnClickListener(v -> cycleAndScrollToPin());
         pinnedCloseBtn.setOnClickListener(v -> pinnedBanner.setVisibility(View.GONE));
     }
-
-    // ══════════════════════════════════════════════════════════════
-    // PARTNER INFO IN HEADER
-    // ══════════════════════════════════════════════════════════════
-
-    private void loadPartnerInfo() {
-        SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
-        String storedName = prefs.getString("partner_name", null);
-        String storedPhoto = prefs.getString("partner_photo_url", null);
-
-        if (storedName != null && !storedName.isEmpty()) {
-            tvPartnerName.setText(storedName);
-            setAvatarInitial(storedName);
-        }
-        if (storedPhoto != null && !storedPhoto.isEmpty()) {
-            tvAvatarInitial.setVisibility(View.GONE);
-            ivPartnerAvatar.setVisibility(View.VISIBLE);
-            Glide.with(this).load(storedPhoto).circleCrop().into(ivPartnerAvatar);
-        }
-
-        if (partnerUid != null) {
-            db.collection("users").document(partnerUid).get()
-              .addOnSuccessListener(doc -> {
-                  if (!doc.exists()) return;
-                  Object name  = doc.get("displayName");
-                  Object photo = doc.get("photoUrl");
-                  if (name != null)  {
-                      tvPartnerName.setText(name.toString());
-                      setAvatarInitial(name.toString());
-                  }
-                  if (photo != null && !photo.toString().isEmpty()) {
-                      tvAvatarInitial.setVisibility(View.GONE);
-                      ivPartnerAvatar.setVisibility(View.VISIBLE);
-                      Glide.with(this).load(photo.toString()).circleCrop().into(ivPartnerAvatar);
-                  }
-              });
-        }
-    }
-
-    private void setAvatarInitial(String name) {
-        String initial = name.isEmpty() ? "?" : String.valueOf(name.charAt(0)).toUpperCase();
-        tvAvatarInitial.setText(initial);
-        tvAvatarInitial.setVisibility(View.VISIBLE);
-        ivPartnerAvatar.setVisibility(View.INVISIBLE);
-    }
-
-    private void updateOnlineStatus(boolean online, long lastSeenMs) {
-        headerOnlineDot.setVisibility(online ? View.VISIBLE : View.GONE);
-        if (online) {
-            tvOnlineStatus.setText("online");
-            tvOnlineStatus.setTextColor(0xFF4CAF50);
-        } else if (lastSeenMs > 0) {
-            tvOnlineStatus.setText("last seen " + formatLastSeen(lastSeenMs));
-            tvOnlineStatus.setTextColor(0xFF888888);
-        } else {
-            tvOnlineStatus.setText("🔒 end-to-end encrypted");
-            tvOnlineStatus.setTextColor(0xFF888888);
-        }
-    }
-
-    private String formatLastSeen(long epochMs) {
-        long diff = System.currentTimeMillis() - epochMs;
-        if (diff < 60_000) return "just now";
-        if (diff < 3600_000) return (diff / 60_000) + "m ago";
-        if (diff < 86400_000) return (diff / 3600_000) + "h ago";
-        return new java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault())
-            .format(new java.util.Date(epochMs));
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    // VOICE RECORDING
-    // ══════════════════════════════════════════════════════════════
-
-    private void startVoiceRecording() {
-        recordingSeconds = 0;
-        recordingTimer.setText("0:00");
-        recordingWaveform.clear();
-        voiceRecordingBar.setVisibility(View.VISIBLE);
-        View inputBar = findViewById(R.id.inputBar);
-        if (inputBar != null) inputBar.setVisibility(View.GONE);
-        recordingTimerHandler.post(timerTick);
-
-        recorder.start(this, new VoiceRecorderHelper.RecorderListener() {
-            @Override public void onAmplitude(int amp)  { recordingWaveform.addAmplitude(amp); }
-            @Override public void onStopped(String filePath, List<Integer> amplitudes) {
-                uploadVoiceNote(filePath, amplitudes);
-            }
-            @Override public void onError(String msg) {
-                runOnUiThread(() -> {
-                    Toast.makeText(ChatMediaActivity.this, "Recording error: " + msg, Toast.LENGTH_SHORT).show();
-                    dismissRecordingUI();
-                });
-            }
-        });
-    }
-
-    private final Runnable timerTick = new Runnable() {
-        @Override public void run() {
-            recordingSeconds++;
-            recordingTimer.setText(String.format(Locale.US, "%d:%02d",
-                recordingSeconds / 60, recordingSeconds % 60));
-            recordingTimerHandler.postDelayed(this, 1000);
-        }
-    };
-
-    private void cancelVoiceRecording() {
-        recordingTimerHandler.removeCallbacks(timerTick);
-        recorder.cancel();
-        dismissRecordingUI();
-    }
-
-    private void stopAndSendVoiceRecording() {
-        recordingTimerHandler.removeCallbacks(timerTick);
-        recorder.stop();
-        dismissRecordingUI();
-    }
-
-    private void dismissRecordingUI() {
-        voiceRecordingBar.setVisibility(View.GONE);
-        View inputBar = findViewById(R.id.inputBar);
-        if (inputBar != null) inputBar.setVisibility(View.VISIBLE);
-    }
-
-    private void uploadVoiceNote(String filePath, List<Integer> amplitudes) {
-        File f = new File(filePath);
-        if (!f.exists()) return;
-        Uri fileUri = Uri.fromFile(f);
-        StorageReference ref = storageRef.child("voice").child(conversationId)
-            .child(UUID.randomUUID() + ".3gp");
-        runOnUiThread(() -> { uploadProgress.setVisibility(View.VISIBLE); uploadProgress.setProgress(0); });
-        ref.putFile(fileUri)
-            .addOnProgressListener(s -> {
-                int pct = (int) (100.0 * s.getBytesTransferred() / s.getTotalByteCount());
-                runOnUiThread(() -> uploadProgress.setProgress(pct));
-            })
-            .addOnSuccessListener(s -> ref.getDownloadUrl().addOnSuccessListener(uri -> {
-                runOnUiThread(() -> uploadProgress.setVisibility(View.GONE));
-                sendVoiceMessage(uri.toString());
-                f.delete();
-            }))
-            .addOnFailureListener(e -> runOnUiThread(() -> {
-                uploadProgress.setVisibility(View.GONE);
-                Toast.makeText(this, "Voice upload failed", Toast.LENGTH_SHORT).show();
-            }));
-    }
-
-    private void sendVoiceMessage(String mediaUrl) {
-        String msgId = UUID.randomUUID().toString();
-        long now = System.currentTimeMillis();
-        long exp = getDisappearMs() > 0 ? now + getDisappearMs() : 0;
-        Map<String, Object> doc = new HashMap<>();
-        doc.put("id", msgId); doc.put("conversationId", conversationId);
-        doc.put("sender", myUid); doc.put("text", "");
-        doc.put("mediaUrl", mediaUrl); doc.put("mediaType", "voice");
-        doc.put("type", "voice"); doc.put("isEncrypted", false);
-        doc.put("expiresAt", exp); doc.put("timestamp", FieldValue.serverTimestamp());
-        db.collection("conversations").document(conversationId)
-          .collection("messages").document(msgId).set(doc)
-          .addOnSuccessListener(v -> {
-              Message m = new Message(msgId, conversationId, myUid, "", now, false, mediaUrl, "voice");
-              m.setExpiresAt(exp);
-              saveToRoom(m);
-              notifyPartner("DuoShield", "Sent a voice note");
-          });
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    // VOICE PLAYBACK
-    // ══════════════════════════════════════════════════════════════
-
-    private void onVoicePlay(Message msg, ImageView playPauseBtn,
-                             WaveformView waveform, TextView durationView) {
-        if (msg.getId().equals(currentlyPlayingId)) {
-            player.pause();
-            currentlyPlayingId = null;
-            adapter.setPlayingMessageId(null);
-            playPauseBtn.setImageResource(R.drawable.ic_play_video);
-            return;
-        }
-        player.release();
-        currentlyPlayingId = msg.getId();
-        adapter.setPlayingMessageId(msg.getId());
-        playPauseBtn.setImageResource(android.R.drawable.ic_media_pause);
-
-        player.play(msg.getMediaUrl(), new VoiceMessagePlayer.PlayerListener() {
-            @Override public void onStart(int durationMs) {
-                runOnUiThread(() -> durationView.setText(MessageAdapter.formatDuration(durationMs)));
-            }
-            @Override public void onProgress(int posMs) {
-                runOnUiThread(() -> durationView.setText(MessageAdapter.formatDuration(posMs)));
-            }
-            @Override public void onComplete() {
-                runOnUiThread(() -> {
-                    currentlyPlayingId = null;
-                    adapter.setPlayingMessageId(null);
-                    playPauseBtn.setImageResource(R.drawable.ic_play_video);
-                    waveform.setProgress(0f);
-                });
-            }
-            @Override public void onError(String err) {
-                runOnUiThread(() -> {
-                    Toast.makeText(ChatMediaActivity.this, "Playback error", Toast.LENGTH_SHORT).show();
-                    currentlyPlayingId = null;
-                    adapter.setPlayingMessageId(null);
-                    playPauseBtn.setImageResource(R.drawable.ic_play_video);
-                });
-            }
-        });
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    // LIFECYCLE
-    // ══════════════════════════════════════════════════════════════
 
     @Override protected void onResume() {
         super.onResume();
@@ -497,8 +216,6 @@ public class ChatMediaActivity extends BaseActivity {
         if (msgListener  != null) { msgListener.remove();  msgListener  = null; }
         if (convListener != null) { convListener.remove(); convListener = null; }
         typingHandler.removeCallbacksAndMessages(null);
-        recordingTimerHandler.removeCallbacks(timerTick);
-        player.release();
         if (isTyping && conversationId != null && myUid != null) {
             db.collection("conversations").document(conversationId)
               .update("typing_" + myUid, false);
@@ -507,18 +224,24 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // FIRESTORE LISTENERS
+    // MESSAGE PINNING
     // ══════════════════════════════════════════════════════════════
 
-    private void listenForConvUpdates() {
+    private void listenForPins() {
         convListener = db.collection("conversations").document(conversationId)
           .addSnapshotListener((snap, e) -> {
               if (snap == null) return;
 
-              // Pinned messages
-              List<Map<String, Object>> raw =
-                  (List<Map<String, Object>>) snap.get("pinnedMessages");
+              Object pinnedRaw = snap.get("pinnedMessages");
+              List<Map<String, Object>> raw = null;
+              if (pinnedRaw instanceof List) {
+                  try {
+                      //noinspection unchecked
+                      raw = (List<Map<String, Object>>) pinnedRaw;
+                  } catch (ClassCastException ignored) {}
+              }
               pinnedList = raw != null ? raw : new ArrayList<>();
+
               Set<String> ids = new HashSet<>();
               for (Map<String, Object> m : pinnedList) {
                   Object id = m.get("id");
@@ -527,81 +250,11 @@ public class ChatMediaActivity extends BaseActivity {
               adapter.updatePinnedIds(ids);
               refreshPinnedBanner();
 
-              // Typing
-              Object typing = snap.get("typing_" + partnerUid);
-              typingIndicatorRow.setVisibility(
-                  Boolean.TRUE.equals(typing) ? View.VISIBLE : View.GONE);
-
-              // Online / last seen
-              Object online   = snap.get("online_"   + partnerUid);
-              Object lastSeen = snap.get("lastSeen_" + partnerUid);
-              long lastSeenMs = 0;
-              if (lastSeen instanceof com.google.firebase.Timestamp)
-                  lastSeenMs = ((com.google.firebase.Timestamp) lastSeen).toDate().getTime();
-              updateOnlineStatus(Boolean.TRUE.equals(online), lastSeenMs);
+              Object val = snap.get("typing_" + partnerUid);
+              if (typingIndicator != null)
+                  typingIndicator.setVisibility(Boolean.TRUE.equals(val) ? View.VISIBLE : View.GONE);
           });
     }
-
-    private void listenForMessages() {
-        msgListener = db.collection("conversations").document(conversationId)
-          .collection("messages").orderBy("timestamp")
-          .addSnapshotListener((snaps, e) -> {
-              if (snaps == null) return;
-              boolean changed = false;
-              for (DocumentChange dc : snaps.getDocumentChanges()) {
-                  if (dc.getType() == DocumentChange.Type.ADDED) {
-                      String id    = dc.getDocument().getString("id");
-                      String convo = dc.getDocument().getString("conversationId");
-                      String from  = dc.getDocument().getString("sender");
-                      String text  = dc.getDocument().getString("text");
-                      String mUrl  = dc.getDocument().getString("mediaUrl");
-                      String mType = dc.getDocument().getString("mediaType");
-                      String rpId  = dc.getDocument().getString("replyToId");
-                      String rpPrv = dc.getDocument().getString("replyPreview");
-                      Long   expAt = dc.getDocument().getLong("expiresAt");
-                      long   ts    = System.currentTimeMillis();
-
-                      // Use server timestamp if available
-                      com.google.firebase.Timestamp serverTs =
-                          dc.getDocument().getTimestamp("timestamp");
-                      if (serverTs != null) ts = serverTs.toDate().getTime();
-
-                      if (id != null) {
-                          // Skip if already in local list
-                          boolean exists = false;
-                          for (Message m : adapter.getMessages())
-                              if (id.equals(m.getId())) { exists = true; break; }
-                          if (exists) continue;
-
-                          Message m = new Message(id, convo, from, text, ts, false, mUrl, mType);
-                          if (rpId  != null) m.setReplyToId(rpId);
-                          if (rpPrv != null) m.setReplyPreview(rpPrv);
-                          if (expAt != null) m.setExpiresAt(expAt);
-                          if (isExpired(m)) continue;
-
-                          adapter.appendMessage(m);
-                          saveToRoom(m);
-                          changed = true;
-                      }
-                  } else if (dc.getType() == DocumentChange.Type.MODIFIED) {
-                      String id       = dc.getDocument().getString("id");
-                      String reaction = dc.getDocument().getString("reaction");
-                      if (id != null) {
-                          String finalId = id; String finalReaction = reaction;
-                          adapter.updateMessage(id, msg -> msg.setReaction(finalReaction));
-                      }
-                  }
-              }
-              if (changed) {
-                  int last = adapter.getItemCount() - 1;
-                  if (last >= 0) recyclerView.scrollToPosition(last);
-              }
-          });
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    // PINNING
-    // ══════════════════════════════════════════════════════════════
 
     private void refreshPinnedBanner() {
         if (pinnedList.isEmpty()) { pinnedBanner.setVisibility(View.GONE); return; }
@@ -609,8 +262,15 @@ public class ChatMediaActivity extends BaseActivity {
         if (pinnedViewIdx >= pinnedList.size()) pinnedViewIdx = 0;
         Map<String, Object> pin = pinnedList.get(pinnedViewIdx);
         Object preview = pin.get("preview");
-        pinnedText.setText(preview != null ? preview.toString() : "Pinned message");
-        pinnedCount.setText(pinnedList.size() > 1 ? (pinnedViewIdx + 1) + "/" + pinnedList.size() : "");
+        // Decrypt the stored preview for display
+        String displayPreview = preview != null ? EncryptionHelper.decrypt(this, preview.toString()) : "Pinned message";
+        pinnedText.setText(displayPreview);
+        if (pinnedCount != null) {
+            if (pinnedList.size() > 1)
+                pinnedCount.setText((pinnedViewIdx + 1) + "/" + pinnedList.size());
+            else
+                pinnedCount.setText("");
+        }
     }
 
     private void cycleAndScrollToPin() {
@@ -620,42 +280,76 @@ public class ChatMediaActivity extends BaseActivity {
         Map<String, Object> pin = pinnedList.get(pinnedViewIdx);
         Object targetId = pin.get("id");
         if (targetId == null) return;
-        List<Message> msgs = adapter.getMessages();
-        for (int i = 0; i < msgs.size(); i++) {
-            if (targetId.toString().equals(msgs.get(i).getId())) {
-                recyclerView.smoothScrollToPosition(i); break;
+        for (int i = 0; i < messages.size(); i++) {
+            if (targetId.toString().equals(messages.get(i).getId())) {
+                recyclerView.smoothScrollToPosition(i);
+                break;
             }
         }
     }
 
     private void pinMessage(Message msg) {
-        for (Map<String, Object> p : pinnedList)
-            if (msg.getId().equals(p.get("id"))) { Toast.makeText(this, "Already pinned", Toast.LENGTH_SHORT).show(); return; }
-        if (pinnedList.size() >= MAX_PINS) { Toast.makeText(this, "Max " + MAX_PINS + " pins", Toast.LENGTH_SHORT).show(); return; }
-        String preview = (msg.getText() != null && !msg.getText().isEmpty()) ? msg.getText() : "[media]";
-        Map<String, Object> entry = new HashMap<>(); entry.put("id", msg.getId()); entry.put("preview", preview);
+        for (Map<String, Object> p : pinnedList) {
+            if (msg.getId().equals(p.get("id"))) {
+                Toast.makeText(this, "Already pinned", Toast.LENGTH_SHORT).show(); return;
+            }
+        }
+        if (pinnedList.size() >= MAX_PINS) {
+            Toast.makeText(this, "Max " + MAX_PINS + " pins reached. Unpin one first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String plainPreview = (msg.getText() != null && !msg.getText().isEmpty())
+            ? msg.getText() : "[media]";
+        // Encrypt the preview before storing (#16)
+        String encPreview = EncryptionHelper.encrypt(this, plainPreview);
+
+        Map<String, Object> entry = new HashMap<>();
+        entry.put("id",      msg.getId());
+        entry.put("preview", encPreview);
+
+        if (!costGuard.canWrite(1)) {
+            Toast.makeText(this, "Daily write limit reached.", Toast.LENGTH_SHORT).show(); return;
+        }
         db.collection("conversations").document(conversationId)
           .update("pinnedMessages", FieldValue.arrayUnion(entry))
-          .addOnSuccessListener(v -> Toast.makeText(this, "Pinned 📌", Toast.LENGTH_SHORT).show())
+          .addOnSuccessListener(v -> {
+              costGuard.recordWrites(1);
+              Toast.makeText(this, "Message pinned 📌", Toast.LENGTH_SHORT).show();
+          })
           .addOnFailureListener(ex -> {
-              Map<String, Object> d = new HashMap<>(); d.put("pinnedMessages", Arrays.asList(entry));
+              Map<String, Object> initDoc = new HashMap<>();
+              initDoc.put("pinnedMessages", Arrays.asList(entry));
               db.collection("conversations").document(conversationId)
-                .set(d, com.google.firebase.firestore.SetOptions.merge())
-                .addOnSuccessListener(v2 -> Toast.makeText(this, "Pinned 📌", Toast.LENGTH_SHORT).show());
+                .set(initDoc, com.google.firebase.firestore.SetOptions.merge())
+                .addOnSuccessListener(v2 -> {
+                    costGuard.recordWrites(1);
+                    Toast.makeText(this, "Message pinned 📌", Toast.LENGTH_SHORT).show();
+                });
           });
     }
 
     private void unpinMessage(Message msg) {
         Map<String, Object> toRemove = null;
-        for (Map<String, Object> p : pinnedList) if (msg.getId().equals(p.get("id"))) { toRemove = p; break; }
+        for (Map<String, Object> p : pinnedList) {
+            if (msg.getId().equals(p.get("id"))) { toRemove = p; break; }
+        }
         if (toRemove == null) { Toast.makeText(this, "Not pinned", Toast.LENGTH_SHORT).show(); return; }
+        if (!costGuard.canWrite(1)) {
+            Toast.makeText(this, "Daily write limit reached.", Toast.LENGTH_SHORT).show(); return;
+        }
+        final Map<String, Object> finalRemove = toRemove;
         db.collection("conversations").document(conversationId)
           .update("pinnedMessages", FieldValue.arrayRemove(toRemove))
-          .addOnSuccessListener(v -> Toast.makeText(this, "Unpinned", Toast.LENGTH_SHORT).show());
+          .addOnSuccessListener(v -> {
+              costGuard.recordWrites(1);
+              Toast.makeText(this, "Unpinned", Toast.LENGTH_SHORT).show();
+          });
     }
 
     private boolean isPinned(Message msg) {
-        for (Map<String, Object> p : pinnedList) if (msg.getId().equals(p.get("id"))) return true;
+        for (Map<String, Object> p : pinnedList) {
+            if (msg.getId().equals(p.get("id"))) return true;
+        }
         return false;
     }
 
@@ -665,12 +359,11 @@ public class ChatMediaActivity extends BaseActivity {
 
     private void showMessageActionDialog(Message msg) {
         boolean pinned = isPinned(msg);
-        boolean mine   = myUid != null && myUid.equals(msg.getSender());
         String[] options = {
-            pinned ? "Unpin" : "Pin",
-            "Reply",
-            "React",
-            mine ? "Delete for me" : "Delete locally"
+            pinned ? "📌 Unpin" : "📌 Pin",
+            "↩ Reply",
+            "😀 React",
+            "🗑 Delete (local)"
         };
         new AlertDialog.Builder(this)
             .setItems(options, (d, which) -> {
@@ -678,45 +371,45 @@ public class ChatMediaActivity extends BaseActivity {
                     case 0: if (pinned) unpinMessage(msg); else pinMessage(msg); break;
                     case 1: enterReplyMode(msg); break;
                     case 2: showReactionPicker(msg); break;
-                    case 3: adapter.removeMessage(msg.getId()); break;
+                    case 3: deleteMessageLocally(msg); break;
                 }
             }).show();
     }
 
-    private void showReactionPicker(Message msg) {
-        String[] emojis = {"👍", "❤️", "😂", "😮", "😢", "🙏"};
-        new AlertDialog.Builder(this).setTitle("React")
-            .setItems(emojis, (d, w) -> {
-                db.collection("conversations").document(conversationId)
-                  .collection("messages").document(msg.getId()).update("reaction", emojis[w]);
-                adapter.updateMessage(msg.getId(), m -> m.setReaction(emojis[w]));
-            }).show();
-    }
-
     // ══════════════════════════════════════════════════════════════
-    // TYPING
+    // TYPING INDICATOR (#25)
     // ══════════════════════════════════════════════════════════════
 
     private void onUserTyping() {
         if (!isTyping) {
             isTyping = true;
-            db.collection("conversations").document(conversationId).update("typing_" + myUid, true);
+            // Guard typing writes (#25)
+            if (costGuard.canWrite(1)) {
+                db.collection("conversations").document(conversationId)
+                  .update("typing_" + myUid, true);
+                costGuard.recordWrites(1);
+            }
         }
         typingHandler.removeCallbacksAndMessages(null);
         typingHandler.postDelayed(() -> {
             isTyping = false;
-            db.collection("conversations").document(conversationId).update("typing_" + myUid, false);
+            if (costGuard.canWrite(1)) {
+                db.collection("conversations").document(conversationId)
+                  .update("typing_" + myUid, false);
+                costGuard.recordWrites(1);
+            }
         }, 3000);
     }
 
     // ══════════════════════════════════════════════════════════════
-    // REPLY
+    // REPLY MODE
     // ══════════════════════════════════════════════════════════════
 
     private void enterReplyMode(Message msg) {
         pendingReplyId      = msg.getId();
-        pendingReplyPreview = (msg.getText() != null && !msg.getText().isEmpty()) ? msg.getText() : "[media]";
-        replyPreviewBarText.setText("↩  " + pendingReplyPreview);
+        pendingReplyPreview = (msg.getText() != null && !msg.getText().isEmpty())
+            ? msg.getText() : "[media]";
+        replyPreviewBarText.setText("Replying to: " + pendingReplyPreview);
         replyPreviewBar.setVisibility(View.VISIBLE);
         messageInput.requestFocus();
     }
@@ -727,7 +420,33 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // DISAPPEARING / EXPIRED
+    // REACTIONS
+    // ══════════════════════════════════════════════════════════════
+
+    private void showReactionPicker(Message msg) {
+        String[] emojis = {"👍", "❤️", "😂", "😮", "😢", "🙏"};
+        new AlertDialog.Builder(this).setTitle("React")
+            .setItems(emojis, (d, w) -> sendReaction(msg, emojis[w])).show();
+    }
+
+    private void sendReaction(Message msg, String emoji) {
+        if (!costGuard.canWrite(1)) return;
+        db.collection("conversations").document(conversationId)
+          .collection("messages").document(msg.getId())
+          .update("reaction", emoji);
+        costGuard.recordWrites(1);
+        msg.setReaction(emoji);
+        int idx = messages.indexOf(msg);
+        if (idx >= 0) adapter.notifyItemChanged(idx);
+    }
+
+    private void deleteMessageLocally(Message msg) {
+        int idx = messages.indexOf(msg);
+        if (idx >= 0) { messages.remove(idx); adapter.notifyItemRemoved(idx); }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // DISAPPEARING MESSAGES
     // ══════════════════════════════════════════════════════════════
 
     private long getDisappearMs() {
@@ -747,7 +466,7 @@ public class ChatMediaActivity extends BaseActivity {
         SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
         switch (prefs.getString("wallpaper_type", "none")) {
             case "color":
-                recyclerView.setBackgroundColor(prefs.getInt("wallpaper_color", Color.TRANSPARENT)); break;
+                recyclerView.setBackgroundColor(prefs.getInt("wallpaper_color", Color.WHITE)); break;
             case "image":
                 String u = prefs.getString("wallpaper_uri", null);
                 if (u != null) Glide.with(this).load(Uri.parse(u)).centerCrop()
@@ -782,12 +501,27 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // SEND MESSAGE
+    // MENU
+    // ══════════════════════════════════════════════════════════════
+
+    @Override public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.chat_menu, menu); return true;
+    }
+
+    @Override public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_settings) { startActivity(new Intent(this, SettingsActivity.class)); return true; }
+        if (id == R.id.action_wallpaper) { showWallpaperDialog(); return true; }
+        return super.onOptionsItemSelected(item);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // CORE: SEND / LISTEN
     // ══════════════════════════════════════════════════════════════
 
     private void showMediaTypePopup() {
         new AlertDialog.Builder(this).setTitle("Share")
-            .setItems(new String[]{"🖼 Image", "🎬 Video", "👤 Contact Card"}, (d, w) -> {
+            .setItems(new String[]{"Image", "Video", "Profile Card"}, (d, w) -> {
                 if      (w == 0) pickImageLauncher.launch("image/*");
                 else if (w == 1) pickVideoLauncher.launch("video/*");
                 else             sendContactCard();
@@ -797,20 +531,37 @@ public class ChatMediaActivity extends BaseActivity {
     private void uploadMedia(Uri fileUri, String mediaType) {
         String ext = "video".equals(mediaType) ? ".mp4" : ".jpg";
         StorageReference ref = storageRef.child("media").child(conversationId).child(UUID.randomUUID() + ext);
-        uploadProgress.setVisibility(View.VISIBLE); uploadProgress.setProgress(0);
+        // Null-check uploadProgress (#11)
+        if (uploadProgress != null) { uploadProgress.setVisibility(View.VISIBLE); uploadProgress.setProgress(0); }
+        uploadButton.setEnabled(false);
         ref.putFile(fileUri)
-            .addOnProgressListener(s -> uploadProgress.setProgress(
-                (int) (100.0 * s.getBytesTransferred() / s.getTotalByteCount())))
-            .addOnFailureListener(e -> { Toast.makeText(this, "Upload failed", Toast.LENGTH_SHORT).show(); uploadProgress.setVisibility(View.GONE); })
+            .addOnProgressListener(s -> {
+                if (uploadProgress != null)
+                    uploadProgress.setProgress((int) (100.0 * s.getBytesTransferred() / s.getTotalByteCount()));
+            })
+            .addOnFailureListener(e -> {
+                Toast.makeText(this, "Upload failed", Toast.LENGTH_SHORT).show();
+                if (uploadProgress != null) uploadProgress.setVisibility(View.GONE);
+                uploadButton.setEnabled(true);
+            })
             .addOnSuccessListener(s -> ref.getDownloadUrl().addOnSuccessListener(uri -> {
-                uploadProgress.setVisibility(View.GONE);
+                if (uploadProgress != null) uploadProgress.setVisibility(View.GONE);
+                uploadButton.setEnabled(true);
                 sendMediaMessage(uri.toString(), mediaType);
-            }).addOnFailureListener(e -> uploadProgress.setVisibility(View.GONE)));
+            }).addOnFailureListener(e -> {
+                if (uploadProgress != null) uploadProgress.setVisibility(View.GONE);
+                uploadButton.setEnabled(true);
+            }));
     }
 
     private void sendMediaMessage(String mediaUrl, String mediaType) {
-        String msgId = UUID.randomUUID().toString(); long now = System.currentTimeMillis();
-        long exp = getDisappearMs() > 0 ? now + getDisappearMs() : 0;
+        if (!costGuard.canWrite(1)) {
+            Toast.makeText(this, "Daily write limit reached.", Toast.LENGTH_SHORT).show(); return;
+        }
+        String msgId = UUID.randomUUID().toString();
+        long   now   = System.currentTimeMillis();
+        long   ttl   = getDisappearMs();
+        long   exp   = ttl > 0 ? now + ttl : 0;
         Map<String, Object> doc = new HashMap<>();
         doc.put("id", msgId); doc.put("conversationId", conversationId);
         doc.put("sender", myUid); doc.put("text", "");
@@ -820,15 +571,19 @@ public class ChatMediaActivity extends BaseActivity {
         db.collection("conversations").document(conversationId)
           .collection("messages").document(msgId).set(doc)
           .addOnSuccessListener(v -> {
-              Message m = new Message(msgId, conversationId, myUid, "", now, false, mediaUrl, mediaType);
+              costGuard.recordWrites(1);
+              Message m = new Message(); m.setId(msgId); m.setConversationId(conversationId); m.setSender(myUid); m.setText(""); m.setTimestamp(now); m.setEncrypted(false); m.setMediaUrl(mediaUrl); m.setMediaType(mediaType);
               m.setExpiresAt(exp); saveToRoom(m);
-              notifyPartner("DuoShield", "video".equals(mediaType) ? "Sent a video 🎬" : "Sent a photo 🖼");
           });
     }
 
     private void sendContactCard() {
+        if (!costGuard.canWrite(1)) {
+            Toast.makeText(this, "Daily write limit reached.", Toast.LENGTH_SHORT).show(); return;
+        }
         String cardText = "DuoShield User|" + myUid;
-        String msgId = UUID.randomUUID().toString(); long now = System.currentTimeMillis();
+        String msgId    = UUID.randomUUID().toString();
+        long   now      = System.currentTimeMillis();
         Map<String, Object> doc = new HashMap<>();
         doc.put("id", msgId); doc.put("conversationId", conversationId);
         doc.put("sender", myUid); doc.put("text", cardText);
@@ -837,25 +592,39 @@ public class ChatMediaActivity extends BaseActivity {
         db.collection("conversations").document(conversationId)
           .collection("messages").document(msgId).set(doc)
           .addOnSuccessListener(v -> {
-              saveToRoom(new Message(msgId, conversationId, myUid, cardText, now, false, null, "contact_card"));
-              notifyPartner("DuoShield", "Shared a contact card");
+              costGuard.recordWrites(1);
+              Message mc = new Message(); mc.setId(msgId); mc.setConversationId(conversationId); mc.setSender(myUid); mc.setText(cardText); mc.setTimestamp(now); mc.setEncrypted(false); mc.setMediaType("contact_card"); saveToRoom(mc);
           });
     }
 
     private void sendMessage(String plaintext) {
+        if (!costGuard.canWrite(1)) {
+            Toast.makeText(this, "Daily write limit reached.", Toast.LENGTH_SHORT).show(); return;
+        }
         String ciphertext;
         try {
             SecretKey k = CryptoInitializer.getSharedKey(this);
             if (k == null) k = KeyManager.getKey();
+            if (k == null) {
+                KeyManager.generateKey();
+                k = KeyManager.getKey();
+            }
+            if (k == null) throw new IllegalStateException("No encryption key available");
             ciphertext = CryptoHelper.encrypt(plaintext, k);
         } catch (Exception e) {
             Log.e(TAG, "Encryption failed", e);
             Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show(); return;
         }
-        String msgId = UUID.randomUUID().toString(); long now = System.currentTimeMillis();
-        long exp = getDisappearMs() > 0 ? now + getDisappearMs() : 0;
-        String rId = pendingReplyId; String rPrv = pendingReplyPreview;
+        String msgId = UUID.randomUUID().toString();
+        long   now   = System.currentTimeMillis();
+        long   ttl   = getDisappearMs();
+        long   exp   = ttl > 0 ? now + ttl : 0;
+        String rId   = pendingReplyId;
+        // Encrypt the reply preview before storing (#15)
+        String rPrv  = pendingReplyPreview != null
+            ? EncryptionHelper.encrypt(this, pendingReplyPreview) : null;
         clearReplyMode();
+
         Map<String, Object> doc = new HashMap<>();
         doc.put("id", msgId); doc.put("conversationId", conversationId);
         doc.put("sender", myUid); doc.put("text", ciphertext);
@@ -863,125 +632,108 @@ public class ChatMediaActivity extends BaseActivity {
         doc.put("expiresAt", exp);
         if (rId != null) { doc.put("replyToId", rId); doc.put("replyPreview", rPrv); }
         doc.put("timestamp", FieldValue.serverTimestamp());
-        final String fc = ciphertext;
+
         db.collection("conversations").document(conversationId)
           .collection("messages").document(msgId).set(doc)
           .addOnSuccessListener(v -> {
-              Message m = new Message(msgId, conversationId, myUid, fc, now, true);
+              costGuard.recordWrites(1);
+              // Store plaintext locally (#31 — prevents search from finding ciphertext)
+              Message m = new Message(); m.setId(msgId); m.setConversationId(conversationId); m.setSender(myUid);
+              m.setText(plaintext); m.setTimestamp(now); m.setEncrypted(true);
               m.setExpiresAt(exp);
-              if (rId != null) { m.setReplyToId(rId); m.setReplyPreview(rPrv); }
+              if (rId != null) { m.setReplyToId(rId); m.setReplyPreview(pendingReplyPreview); }
               saveToRoom(m);
-              notifyPartner("DuoShield", "New message");
+              com.duoshield.app.util.ConversationMetaUpdater.update(
+                  ChatMediaActivity.this, conversationId, myUid, partnerUid,
+                  plaintext.length() > 80 ? plaintext.substring(0, 80) : plaintext);
           })
           .addOnFailureListener(e -> Toast.makeText(this, "Failed to send.", Toast.LENGTH_SHORT).show());
     }
 
     private void markAsSeen() {
         if (conversationId == null || myUid == null) return;
+        if (!costGuard.canWrite(1)) return;
         db.collection("conversations").document(conversationId)
           .update("lastSeen_" + myUid, FieldValue.serverTimestamp());
+        costGuard.recordWrites(1);
+    }
+
+    private void listenForMessages() {
+        if (!costGuard.canRead(1)) {
+            Toast.makeText(this, "Daily read limit reached.", Toast.LENGTH_LONG).show(); return;
+        }
+        msgListener = db.collection("conversations").document(conversationId)
+          .collection("messages").orderBy("timestamp")
+          .addSnapshotListener((snaps, e) -> {
+              if (snaps == null) return;
+              boolean added = false;
+              for (DocumentChange dc : snaps.getDocumentChanges()) {
+                  if (dc.getType() == DocumentChange.Type.ADDED) {
+                      String id    = dc.getDocument().getString("id");
+                      String convo = dc.getDocument().getString("conversationId");
+                      String from  = dc.getDocument().getString("sender");
+                      String text  = dc.getDocument().getString("text");
+                      String mUrl  = dc.getDocument().getString("mediaUrl");
+                      String mType = dc.getDocument().getString("mediaType");
+                      String rpId  = dc.getDocument().getString("replyToId");
+                      String rpPrv = dc.getDocument().getString("replyPreview");
+                      Long   expAt = dc.getDocument().getLong("expiresAt");
+
+                      // Use server timestamp instead of local clock (#26)
+                      com.google.firebase.Timestamp firestoreTs = dc.getDocument().getTimestamp("timestamp");
+                      long ts = firestoreTs != null ? firestoreTs.toDate().getTime() : System.currentTimeMillis();
+
+                      // Decrypt incoming encrypted text (#4)
+                      Boolean enc = dc.getDocument().getBoolean("isEncrypted");
+                      if (Boolean.TRUE.equals(enc) && text != null) {
+                          text = EncryptionHelper.decrypt(ChatMediaActivity.this, text);
+                      }
+                      // Decrypt reply preview if present
+                      if (rpPrv != null && !rpPrv.isEmpty()) {
+                          rpPrv = EncryptionHelper.decrypt(ChatMediaActivity.this, rpPrv);
+                      }
+
+                      if (id != null) {
+                          // Duplicate ID guard (#27)
+                          boolean alreadyExists = false;
+                          for (Message existing : messages) {
+                              if (id.equals(existing.getId())) { alreadyExists = true; break; }
+                          }
+                          if (alreadyExists) continue;
+
+                          Message m = new Message(); m.setId(id); m.setConversationId(convo); m.setSender(from); m.setText(text); m.setTimestamp(ts); m.setEncrypted(Boolean.TRUE.equals(enc)); m.setMediaUrl(mUrl); m.setMediaType(mType);
+                          if (rpId  != null) m.setReplyToId(rpId);
+                          if (rpPrv != null) m.setReplyPreview(rpPrv);
+                          if (expAt != null) m.setExpiresAt(expAt);
+                          if (isExpired(m)) continue;
+                          messages.add(m);
+                          adapter.notifyItemInserted(messages.size() - 1);
+                          recyclerView.scrollToPosition(messages.size() - 1);
+                          saveToRoom(m);
+                          added = true;
+                      }
+                  } else if (dc.getType() == DocumentChange.Type.MODIFIED) {
+                      String id       = dc.getDocument().getString("id");
+                      String newText  = dc.getDocument().getString("text");
+                      Boolean enc     = dc.getDocument().getBoolean("isEncrypted");
+                      String reaction = dc.getDocument().getString("reaction");
+                      if (Boolean.TRUE.equals(enc) && newText != null) {
+                          newText = EncryptionHelper.decrypt(ChatMediaActivity.this, newText);
+                      }
+                      for (int i = 0; i < messages.size(); i++) {
+                          if (messages.get(i).getId() != null && messages.get(i).getId().equals(id)) {
+                              if (newText != null) messages.get(i).setText(newText);
+                              messages.get(i).setReaction(reaction);
+                              adapter.notifyItemChanged(i); break;
+                          }
+                      }
+                  }
+              }
+              if (added) costGuard.recordReads(snaps.getDocumentChanges().size());
+          });
     }
 
     private void saveToRoom(Message m) {
         dbExecutor.execute(() -> AppDatabase.getInstance(this).messageDao().insert(m));
-    }
-
-    private void notifyPartner(String title, String body) {
-        if (partnerUid == null) return;
-        db.collection("users").document(partnerUid).get()
-          .addOnSuccessListener(doc -> {
-              String tok = doc.getString("fcmToken");
-              if (tok != null && !tok.isEmpty()) sendFcmNotification(tok, title, body);
-          });
-    }
-
-    private void sendFcmNotification(String token, String title, String body) {
-        dbExecutor.execute(() -> {
-            try {
-                JSONObject notification = new JSONObject();
-                notification.put("title", title); notification.put("body", body);
-                JSONObject msgObj = new JSONObject();
-                msgObj.put("token", token); msgObj.put("notification", notification);
-                JSONObject payload = new JSONObject(); payload.put("message", msgObj);
-
-                // Read service account for JWT signing (no google-auth-library needed)
-                InputStream sa = getAssets().open("service-account.json");
-                byte[] saBytes = new byte[sa.available()];
-                //noinspection ResultOfMethodCallIgnored
-                sa.read(saBytes);
-                sa.close();
-                JSONObject saJson = new JSONObject(new String(saBytes, StandardCharsets.UTF_8));
-                String pemKey     = saJson.getString("private_key");
-                String clientEmail = saJson.getString("client_email");
-
-                String accessToken = buildOAuth2Token(pemKey, clientEmail);
-
-                URL url = new URL(FCM_ENDPOINT);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Authorization", "Bearer " + accessToken);
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setDoOutput(true);
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
-                }
-                Log.d(TAG, "FCM: " + conn.getResponseCode());
-            } catch (Exception ex) { Log.w(TAG, "FCM failed", ex); }
-        });
-    }
-
-    /**
-     * Builds a short-lived OAuth2 access token for FCM HTTP v1 by manually
-     * signing a JWT with RS256 — no external google-auth library required.
-     * minSdk=26 guarantees {@link java.util.Base64} and {@link java.security.Signature}.
-     */
-    private String buildOAuth2Token(String privateKeyPem, String clientEmail) throws Exception {
-        // Strip PEM envelope and decode to PKCS8 bytes
-        String pem = privateKeyPem
-            .replace("-----BEGIN PRIVATE KEY-----", "")
-            .replace("-----END PRIVATE KEY-----", "")
-            .replaceAll("\\s+", "");
-        byte[] keyBytes = java.util.Base64.getDecoder().decode(pem);
-        PrivateKey privateKey = KeyFactory.getInstance("RSA")
-            .generatePrivate(new PKCS8EncodedKeySpec(keyBytes));
-
-        // Build JWT header.claims (RFC 7519 / Google OAuth2 service-account flow)
-        long now = System.currentTimeMillis() / 1000;
-        String header = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("{\"alg\":\"RS256\",\"typ\":\"JWT\"}"
-                .getBytes(StandardCharsets.UTF_8));
-        String claims = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(("{\"iss\":\"" + clientEmail + "\","
-                + "\"scope\":\"" + FCM_SCOPE + "\","
-                + "\"aud\":\"https://oauth2.googleapis.com/token\","
-                + "\"iat\":" + now + ","
-                + "\"exp\":" + (now + 3600) + "}")
-                .getBytes(StandardCharsets.UTF_8));
-        String sigInput = header + "." + claims;
-
-        // Sign with RS256
-        Signature signer = Signature.getInstance("SHA256withRSA");
-        signer.initSign(privateKey);
-        signer.update(sigInput.getBytes(StandardCharsets.UTF_8));
-        String sigB64 = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(signer.sign());
-
-        String jwt = sigInput + "." + sigB64;
-
-        // Exchange JWT for access token
-        URL tokenUrl = new URL("https://oauth2.googleapis.com/token");
-        HttpURLConnection tc = (HttpURLConnection) tokenUrl.openConnection();
-        tc.setRequestMethod("POST");
-        tc.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-        tc.setDoOutput(true);
-        String form = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer"
-                    + "&assertion=" + jwt;
-        try (OutputStream os = tc.getOutputStream()) {
-            os.write(form.getBytes(StandardCharsets.UTF_8));
-        }
-        byte[] resp = new byte[4096];
-        int read = tc.getInputStream().read(resp);
-        return new JSONObject(new String(resp, 0, read, StandardCharsets.UTF_8))
-            .getString("access_token");
     }
 }
