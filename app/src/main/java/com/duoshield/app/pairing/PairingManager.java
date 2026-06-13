@@ -2,6 +2,8 @@ package com.duoshield.app.pairing;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
 
 import com.duoshield.app.crypto.CryptoInitializer;
@@ -30,7 +32,8 @@ public class PairingManager {
     private static final String KEY_MY_UID      = "my_uid";
     private static final String KEY_PARTNER_UID = "partner_uid";
 
-    private static final long ROOM_EXPIRY_MS = 10 * 60 * 1000L;
+    private static final long   ROOM_EXPIRY_MS  = 10 * 60 * 1000L;
+    private static final int    RETRY_DELAY_MS  = 2000;
 
     private final Context context;
     private final FirebaseFirestore db;
@@ -48,13 +51,21 @@ public class PairingManager {
         this.db = FirebaseFirestore.getInstance();
     }
 
+    // ── Create room ───────────────────────────────────────────────────────────
+
     public void createRoom(PairingCallback callback) {
         String myUid = FirebaseAuth.getInstance().getUid();
-        if (myUid == null) { callback.onError("Not signed in. Check internet connection."); return; }
-
+        if (myUid == null) {
+            callback.onError("Not signed in. Please reopen the app.");
+            return;
+        }
         String code = generateCode();
-        long now = System.currentTimeMillis();
+        attemptCreateRoom(code, myUid, callback, false);
+    }
 
+    private void attemptCreateRoom(String code, String myUid,
+                                    PairingCallback callback, boolean isRetry) {
+        long now = System.currentTimeMillis();
         Map<String, Object> room = new HashMap<>();
         room.put("creatorUid", myUid);
         room.put("joinerUid",  "");
@@ -69,7 +80,20 @@ public class PairingManager {
                 callback.onWaitingForPartner();
                 listenForPartner(code, myUid, callback);
             })
-            .addOnFailureListener(e -> callback.onError("Failed to create room: " + e.getMessage()));
+            .addOnFailureListener(e -> {
+                String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+                // Retry once if the connection wasn't ready yet
+                if (!isRetry && (msg.contains("offline") || msg.contains("unavailable")
+                        || msg.contains("connect"))) {
+                    new Handler(Looper.getMainLooper()).postDelayed(
+                        () -> attemptCreateRoom(code, myUid, callback, true),
+                        RETRY_DELAY_MS);
+                } else {
+                    callback.onError(isRetry
+                        ? "Cannot reach server. Check your internet connection."
+                        : "Failed to create pairing room. Please try again.");
+                }
+            });
     }
 
     private void listenForPartner(String code, String myUid, PairingCallback callback) {
@@ -88,40 +112,71 @@ public class PairingManager {
         });
     }
 
+    // ── Join room ─────────────────────────────────────────────────────────────
+
     public void joinRoom(String code, PairingCallback callback) {
         String myUid = FirebaseAuth.getInstance().getUid();
-        if (myUid == null) { callback.onError("Not signed in. Check internet connection."); return; }
-        if (code == null || code.length() != 6) { callback.onError("Please enter a valid 6-digit code."); return; }
+        if (myUid == null) {
+            callback.onError("Not signed in. Please reopen the app.");
+            return;
+        }
+        if (code == null || code.length() != 6) {
+            callback.onError("Please enter a valid 6-digit code.");
+            return;
+        }
 
         DocumentReference roomRef = db.collection("rooms").document(code);
-        roomRef.get().addOnSuccessListener(snapshot -> {
-            if (!snapshot.exists()) { callback.onError("Invalid code. Room not found."); return; }
-            String status     = snapshot.getString("status");
-            String creatorUid = snapshot.getString("creatorUid");
-            Long expiresAt    = snapshot.getLong("expiresAt");
-            if (expiresAt != null && System.currentTimeMillis() > expiresAt) {
-                callback.onError("This code has expired. Ask your partner to generate a new one.");
-                cleanupRoom(code); return;
-            }
-            if ("paired".equals(status)) { callback.onError("This room is already paired."); return; }
-            if (myUid.equals(creatorUid)) { callback.onError("You cannot join your own room."); return; }
-
-            Map<String, Object> update = new HashMap<>();
-            update.put("joinerUid", myUid);
-            update.put("status",    "paired");
-
-            roomRef.update(update)
-                .addOnSuccessListener(aVoid -> {
-                    String convId = buildConversationId(code, creatorUid, myUid);
-                    savePrefs(myUid, creatorUid, convId);
+        roomRef.get()
+            .addOnSuccessListener(snapshot -> {
+                if (!snapshot.exists()) {
+                    callback.onError("Invalid code. Room not found.");
+                    return;
+                }
+                String status     = snapshot.getString("status");
+                String creatorUid = snapshot.getString("creatorUid");
+                Long expiresAt    = snapshot.getLong("expiresAt");
+                if (expiresAt != null && System.currentTimeMillis() > expiresAt) {
+                    callback.onError("This code has expired. Ask your contact to generate a new one.");
                     cleanupRoom(code);
-                    deriveAndStoreSharedKey(myUid, creatorUid, callback);
-                })
-                .addOnFailureListener(e -> callback.onError("Failed to join room: " + e.getMessage()));
-        }).addOnFailureListener(e -> callback.onError("Connection error: " + e.getMessage()));
+                    return;
+                }
+                if ("paired".equals(status)) {
+                    callback.onError("This code has already been used.");
+                    return;
+                }
+                if (myUid.equals(creatorUid)) {
+                    callback.onError("You cannot join your own room.");
+                    return;
+                }
+
+                Map<String, Object> update = new HashMap<>();
+                update.put("joinerUid", myUid);
+                update.put("status",    "paired");
+
+                roomRef.update(update)
+                    .addOnSuccessListener(aVoid -> {
+                        String convId = buildConversationId(code, creatorUid, myUid);
+                        savePrefs(myUid, creatorUid, convId);
+                        cleanupRoom(code);
+                        deriveAndStoreSharedKey(myUid, creatorUid, callback);
+                    })
+                    .addOnFailureListener(e -> callback.onError(
+                            "Failed to join. Check your internet connection and try again."));
+            })
+            .addOnFailureListener(e -> {
+                String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+                if (msg.contains("offline") || msg.contains("unavailable")) {
+                    callback.onError("No connection. Check your internet and try again.");
+                } else {
+                    callback.onError("Failed to reach server. Please try again.");
+                }
+            });
     }
 
-    private void deriveAndStoreSharedKey(String myUid, String partnerUid, PairingCallback callback) {
+    // ── ECDH key exchange ─────────────────────────────────────────────────────
+
+    private void deriveAndStoreSharedKey(String myUid, String partnerUid,
+                                          PairingCallback callback) {
         SharedPreferences secure = SecurePrefs.get(context);
         String myPublicKeyB64 = secure.getString(CryptoInitializer.KEY_EC_PUBLIC, null);
 
@@ -155,13 +210,14 @@ public class PairingManager {
             if (myPrivKey == null) return;
             SecretKey sharedKey = ECDHHelper.deriveSharedKey(myPrivKey, partnerPubB64);
             String sharedB64 = Base64.encodeToString(sharedKey.getEncoded(), Base64.NO_WRAP);
-            // Store both the shared key AND the partner's public key (#33)
             secure.edit()
                   .putString(CryptoInitializer.KEY_SHARED_AES, sharedB64)
                   .putString(CryptoInitializer.KEY_PARTNER_EC_PUBLIC, partnerPubB64)
                   .apply();
         } catch (Exception ignored) {}
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private String generateCode() {
         int num = 100000 + new Random().nextInt(900000);

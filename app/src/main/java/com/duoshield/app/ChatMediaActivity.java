@@ -187,21 +187,26 @@ public class ChatMediaActivity extends BaseActivity {
         listenForMessages();
         listenForPins();
 
-        sendButton.setOnClickListener(v -> {
-            String text = messageInput.getText().toString().trim();
-            if (!text.isEmpty()) { sendMessage(text); messageInput.setText(""); }
-        });
-        uploadButton.setOnClickListener(v -> showMediaTypePopup());
-        cancelReplyBtn.setOnClickListener(v -> clearReplyMode());
+        if (sendButton != null) {
+            sendButton.setOnClickListener(v -> {
+                String text = messageInput != null ? messageInput.getText().toString().trim() : "";
+                if (!text.isEmpty()) { sendMessage(text); messageInput.setText(""); }
+            });
+        }
+        if (uploadButton != null) uploadButton.setOnClickListener(v -> showMediaTypePopup());
+        if (cancelReplyBtn != null) cancelReplyBtn.setOnClickListener(v -> clearReplyMode());
 
-        messageInput.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
-            @Override public void onTextChanged(CharSequence s, int st, int b, int c) { onUserTyping(); }
-            @Override public void afterTextChanged(Editable s) {}
-        });
+        if (messageInput != null) {
+            messageInput.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+                @Override public void onTextChanged(CharSequence s, int st, int b, int c) { onUserTyping(); }
+                @Override public void afterTextChanged(Editable s) {}
+            });
+        }
 
-        pinnedBanner.setOnClickListener(v -> cycleAndScrollToPin());
-        pinnedCloseBtn.setOnClickListener(v -> pinnedBanner.setVisibility(View.GONE));
+        if (pinnedBanner  != null) pinnedBanner.setOnClickListener(v -> cycleAndScrollToPin());
+        if (pinnedCloseBtn != null) pinnedCloseBtn.setOnClickListener(
+                v -> { if (pinnedBanner != null) pinnedBanner.setVisibility(View.GONE); });
     }
 
     @Override protected void onResume() {

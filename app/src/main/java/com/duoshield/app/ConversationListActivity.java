@@ -53,30 +53,35 @@ public class ConversationListActivity extends BaseActivity {
         tvEmpty      = findViewById(R.id.tvEmpty);
         etSearch     = findViewById(R.id.etSearch);
 
-        // OnConversationClickListener has two methods — cannot use a lambda,
-        // must use an anonymous class instead.
         adapter = new ConversationAdapter(myUid, new ConversationAdapter.OnConversationClickListener() {
             @Override public void onClick(Conversation conv)     { openChat(conv); }
-            @Override public void onLongClick(Conversation conv) { /* no-op for now */ }
+            @Override public void onLongClick(Conversation conv) {}
         });
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setAdapter(adapter);
+        if (recyclerView != null) {
+            recyclerView.setLayoutManager(new LinearLayoutManager(this));
+            recyclerView.setAdapter(adapter);
+        }
 
         db = FirebaseFirestore.getInstance();
 
-        etSearch.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
-            @Override public void afterTextChanged(Editable s) {}
-            @Override public void onTextChanged(CharSequence s, int st, int b, int c) {
-                filterConversations(s.toString().trim());
-            }
-        });
+        if (etSearch != null) {
+            etSearch.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+                @Override public void afterTextChanged(Editable s) {}
+                @Override public void onTextChanged(CharSequence s, int st, int b, int c) {
+                    filterConversations(s.toString().trim());
+                }
+            });
+        }
 
-        listenForConversation();
+        // Listener is started in onStart() which always follows onCreate
     }
 
     private void listenForConversation() {
+        // Guard: if already listening, don't create a duplicate listener
+        if (snapshotListener != null) return;
         if (conversationId == null) { showEmpty(true); return; }
+
         snapshotListener = db.collection("conversations").document(conversationId)
             .addSnapshotListener((snap, e) -> {
                 if (snap == null || !snap.exists()) return;
@@ -111,7 +116,8 @@ public class ConversationListActivity extends BaseActivity {
 
                 allConversations.clear();
                 allConversations.add(conv);
-                filterConversations(etSearch.getText().toString().trim());
+                String query = etSearch != null ? etSearch.getText().toString().trim() : "";
+                filterConversations(query);
             });
     }
 
@@ -134,8 +140,8 @@ public class ConversationListActivity extends BaseActivity {
     }
 
     private void showEmpty(boolean empty) {
-        tvEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
-        recyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
+        if (tvEmpty      != null) tvEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (recyclerView != null) recyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
     }
 
     @Override public boolean onCreateOptionsMenu(Menu menu) {
@@ -160,15 +166,15 @@ public class ConversationListActivity extends BaseActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    @Override protected void onStop() {
-        super.onStop();
-        if (snapshotListener != null) { snapshotListener.remove(); snapshotListener = null; }
-    }
-
     @Override protected void onStart() {
         super.onStart();
         AppLockManager.onAppForegrounded(this);
-        listenForConversation();
+        listenForConversation();  // safe: guarded by snapshotListener != null check
+    }
+
+    @Override protected void onStop() {
+        super.onStop();
+        if (snapshotListener != null) { snapshotListener.remove(); snapshotListener = null; }
     }
 
     @Override protected void onResume() { super.onResume(); }
