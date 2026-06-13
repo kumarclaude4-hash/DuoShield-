@@ -161,7 +161,9 @@ public class PairingManager {
                     .addOnSuccessListener(aVoid -> {
                         String convId = buildConversationId(code, creatorUid, myUid);
                         savePrefs(myUid, creatorUid, convId);
-                        cleanupRoom(code);
+                        // Do NOT delete the room here — the creator's snapshot listener
+                        // must still be able to read the "paired" status. The creator
+                        // owns cleanup once it sees the paired state.
                         deriveAndStoreSharedKey(myUid, creatorUid, callback);
                     })
                     .addOnFailureListener(e -> callback.onError(
@@ -179,6 +181,9 @@ public class PairingManager {
 
     // ── ECDH key exchange ─────────────────────────────────────────────────────
 
+    private static final int    KEY_FETCH_RETRIES  = 3;
+    private static final long   KEY_FETCH_DELAY_MS = 1500L;
+
     private void deriveAndStoreSharedKey(String myUid, String partnerUid,
                                           PairingCallback callback) {
         SharedPreferences secure = SecurePrefs.get(context);
@@ -194,16 +199,33 @@ public class PairingManager {
 
         db.collection("users").document(myUid)
           .set(Collections.singletonMap("ecPublicKey", finalMyPubB64), SetOptions.merge())
-          .addOnSuccessListener(v -> {
-              db.collection("users").document(partnerUid).get()
-                .addOnSuccessListener(doc -> {
-                    String partnerPubB64 = doc.getString("ecPublicKey");
-                    if (partnerPubB64 != null && !partnerPubB64.isEmpty()) {
-                        storeSharedKey(partnerPubB64, secure);
-                    }
-                    callback.onPaired();
-                })
-                .addOnFailureListener(e -> callback.onPaired());
+          .addOnSuccessListener(v ->
+              fetchPartnerKeyWithRetry(partnerUid, secure, callback, KEY_FETCH_RETRIES))
+          .addOnFailureListener(e -> callback.onPaired());
+    }
+
+    /**
+     * Fetch the partner's EC public key from Firestore with up to {@code retriesLeft}
+     * retries (1.5 s apart). This guards against the race where the partner hasn't yet
+     * uploaded their key by the time we try to read it.
+     */
+    private void fetchPartnerKeyWithRetry(String partnerUid, SharedPreferences secure,
+                                          PairingCallback callback, int retriesLeft) {
+        db.collection("users").document(partnerUid).get()
+          .addOnSuccessListener(doc -> {
+              String partnerPubB64 = doc.getString("ecPublicKey");
+              if (partnerPubB64 != null && !partnerPubB64.isEmpty()) {
+                  storeSharedKey(partnerPubB64, secure);
+                  callback.onPaired();
+              } else if (retriesLeft > 0) {
+                  new Handler(Looper.getMainLooper()).postDelayed(
+                      () -> fetchPartnerKeyWithRetry(partnerUid, secure, callback, retriesLeft - 1),
+                      KEY_FETCH_DELAY_MS);
+              } else {
+                  // Partner key still not available after all retries — proceed anyway;
+                  // the shared key can be rederived later when the key arrives.
+                  callback.onPaired();
+              }
           })
           .addOnFailureListener(e -> callback.onPaired());
     }

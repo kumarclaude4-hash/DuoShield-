@@ -1,8 +1,10 @@
 package com.duoshield.app;
 
+import android.Manifest;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -22,7 +24,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -74,12 +78,13 @@ import javax.crypto.SecretKey;
 
 public class ChatMediaActivity extends BaseActivity {
 
-    private static final String TAG          = "ChatMediaActivity";
-    private static final String FCM_ENDPOINT =
+    private static final String TAG                  = "ChatMediaActivity";
+    private static final String FCM_ENDPOINT         =
             "https://fcm.googleapis.com/v1/projects/duoshield-8caf1/messages:send";
-    private static final String FCM_SCOPE    =
+    private static final String FCM_SCOPE            =
             "https://www.googleapis.com/auth/firebase.messaging";
-    private static final int    MAX_PINS     = 3;
+    private static final int    MAX_PINS             = 3;
+    private static final int    REQUEST_RECORD_AUDIO = 201;
 
     // Typing debounce
     private final Handler typingHandler = new Handler(Looper.getMainLooper());
@@ -170,11 +175,19 @@ public class ChatMediaActivity extends BaseActivity {
 
         SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
         conversationId = prefs.getString("conversation_id", null);
-        myUid          = prefs.getString("my_uid", FirebaseAuth.getInstance().getUid());
+        myUid          = prefs.getString("my_uid", null);
+        if (myUid == null) {
+            com.google.firebase.auth.FirebaseUser fu = FirebaseAuth.getInstance().getCurrentUser();
+            if (fu != null) myUid = fu.getUid();
+        }
         partnerUid     = prefs.getString("partner_uid", null);
 
         if (conversationId == null) {
             Toast.makeText(this, "No active conversation. Please pair first.", Toast.LENGTH_LONG).show();
+            finish(); return;
+        }
+        if (myUid == null) {
+            Toast.makeText(this, "Authentication error. Please sign in again.", Toast.LENGTH_LONG).show();
             finish(); return;
         }
 
@@ -345,6 +358,13 @@ public class ChatMediaActivity extends BaseActivity {
     // ══════════════════════════════════════════════════════════════
 
     private void startVoiceRecording() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.RECORD_AUDIO},
+                    REQUEST_RECORD_AUDIO);
+            return;
+        }
         recordingSeconds = 0;
         recordingTimer.setText("0:00");
         recordingWaveform.clear();
@@ -485,6 +505,23 @@ public class ChatMediaActivity extends BaseActivity {
     // LIFECYCLE
     // ══════════════════════════════════════════════════════════════
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           String[] permissions,
+                                           int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            if (grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startVoiceRecording();
+            } else {
+                Toast.makeText(this,
+                        "Microphone permission is required to record voice messages.",
+                        Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
     @Override protected void onResume() {
         super.onResume();
         markAsSeen();
@@ -579,7 +616,27 @@ public class ChatMediaActivity extends BaseActivity {
                               if (id.equals(m.getId())) { exists = true; break; }
                           if (exists) continue;
 
-                          Message m = new Message(id, convo, from, text, ts, false, mUrl, mType);
+                          Boolean isEncFlag = dc.getDocument().getBoolean("isEncrypted");
+                          boolean wasEncrypted = Boolean.TRUE.equals(isEncFlag);
+
+                          String displayText = text;
+                          if (wasEncrypted && text != null && !text.isEmpty()) {
+                              try {
+                                  SecretKey k = CryptoInitializer.getSharedKey(ChatMediaActivity.this);
+                                  if (k == null) k = KeyManager.getKey();
+                                  if (k != null) {
+                                      displayText = CryptoHelper.decrypt(text, k);
+                                  } else {
+                                      displayText = "[Unable to decrypt — key missing]";
+                                      Log.w(TAG, "No decryption key available for msg " + id);
+                                  }
+                              } catch (Exception ex) {
+                                  displayText = "[Decryption failed]";
+                                  Log.w(TAG, "Decrypt failed for msg " + id, ex);
+                              }
+                          }
+
+                          Message m = new Message(id, convo, from, displayText, ts, wasEncrypted, mUrl, mType);
                           if (rpId  != null) m.setReplyToId(rpId);
                           if (rpPrv != null) m.setReplyPreview(rpPrv);
                           if (expAt != null) m.setExpiresAt(expAt);
