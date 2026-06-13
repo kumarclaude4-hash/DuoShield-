@@ -9,7 +9,9 @@ public class MediaHelper {
 
     public void uploadMedia(Uri fileUri, String path) {
         StorageReference fileRef = storageRef.child(path);
-        fileRef.putFile(fileUri);
+        fileRef.putFile(fileUri)
+               .addOnFailureListener(e ->
+                   android.util.Log.w("MediaHelper", "uploadMedia failed: " + e.getMessage()));
     }
 
     public StorageReference getMedia(String path) {

@@ -17,7 +17,9 @@ public class ConversationMetaUpdater {
         data.put("lastMessage",   encryptedPreview);
         data.put("lastMessageTs", FieldValue.serverTimestamp());
         data.put("lastSenderId",  senderUid);
-        data.put("unread_" + recipientUid, FieldValue.increment(1));
+        if (recipientUid != null) {
+            data.put("unread_" + recipientUid, FieldValue.increment(1));
+        }
         FirebaseFirestore.getInstance()
             .collection("conversations").document(convId)
             .set(data, SetOptions.merge());

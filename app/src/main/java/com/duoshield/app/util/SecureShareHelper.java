@@ -13,16 +13,17 @@ public class SecureShareHelper {
 
     public static void shareImage(Context ctx, String imageUrl) {
         new Thread(() -> {
-            try {
-                URL url = new URL(imageUrl);
-                InputStream in = url.openStream();
-                File out = new File(ctx.getCacheDir(), "share_" + System.currentTimeMillis() + ".jpg");
-                FileOutputStream fos = new FileOutputStream(out);
+            File out = new File(ctx.getCacheDir(), "share_" + System.currentTimeMillis() + ".jpg");
+            // Use try-with-resources so both streams are always closed, even on exception
+            try (InputStream in = new URL(imageUrl).openStream();
+                 FileOutputStream fos = new FileOutputStream(out)) {
                 byte[] buf = new byte[4096];
                 int n;
                 while ((n = in.read(buf)) > 0) fos.write(buf, 0, n);
-                fos.close(); in.close();
-
+            } catch (Exception ignored) {
+                return;
+            }
+            try {
                 Uri uri = FileProvider.getUriForFile(ctx,
                     ctx.getPackageName() + ".provider", out);
                 Intent intent = new Intent(Intent.ACTION_SEND);

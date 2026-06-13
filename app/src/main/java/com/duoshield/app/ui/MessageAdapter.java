@@ -124,8 +124,10 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
         // Content
         if ("video".equals(type)) {
             h.videoContainer.setVisibility(View.VISIBLE);
-            Glide.with(h.itemView.getContext()).load(msg.getMediaUrl())
-                 .placeholder(R.drawable.ic_play_video).centerCrop().into(h.videoThumbnail);
+            if (h.videoThumbnail != null) {
+                Glide.with(h.itemView.getContext()).load(msg.getMediaUrl())
+                     .placeholder(R.drawable.ic_play_video).centerCrop().into(h.videoThumbnail);
+            }
             h.videoContainer.setOnClickListener(v -> {
                 Intent i = new Intent(Intent.ACTION_VIEW);
                 i.setDataAndType(Uri.parse(msg.getMediaUrl()), "video/*");

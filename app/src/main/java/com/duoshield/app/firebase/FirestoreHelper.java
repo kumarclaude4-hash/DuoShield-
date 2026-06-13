@@ -30,6 +30,8 @@ public class FirestoreHelper {
         db.collection("conversations")
           .document(conversationId)
           .collection("messages")
-          .add(message);
+          .add(message)
+          .addOnFailureListener(e ->
+              android.util.Log.w("FirestoreHelper", "saveMessage failed: " + e.getMessage()));
     }
 }

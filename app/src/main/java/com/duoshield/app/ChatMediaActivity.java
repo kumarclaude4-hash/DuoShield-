@@ -216,6 +216,15 @@ public class ChatMediaActivity extends BaseActivity {
         applyWallpaper();
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        // Re-register listeners that were detached in onStop (e.g. after going to background)
+        if (conversationId != null && db != null) {
+            listenForMessages();
+            listenForPins();
+        }
+    }
+
     @Override protected void onStop() {
         super.onStop();
         if (msgListener  != null) { msgListener.remove();  msgListener  = null; }
@@ -228,11 +237,17 @@ public class ChatMediaActivity extends BaseActivity {
         }
     }
 
+    @Override protected void onDestroy() {
+        super.onDestroy();
+        dbExecutor.shutdown();
+    }
+
     // ══════════════════════════════════════════════════════════════
     // MESSAGE PINNING
     // ══════════════════════════════════════════════════════════════
 
     private void listenForPins() {
+        if (convListener != null) return;  // already registered
         convListener = db.collection("conversations").document(conversationId)
           .addSnapshotListener((snap, e) -> {
               if (snap == null) return;
@@ -249,13 +264,16 @@ public class ChatMediaActivity extends BaseActivity {
               adapter.updatePinnedIds(ids);
               refreshPinnedBanner();
 
-              Object val = snap.get("typing_" + partnerUid);
-              if (typingIndicator != null)
-                  typingIndicator.setVisibility(Boolean.TRUE.equals(val) ? View.VISIBLE : View.GONE);
+              if (partnerUid != null) {
+                  Object val = snap.get("typing_" + partnerUid);
+                  if (typingIndicator != null)
+                      typingIndicator.setVisibility(Boolean.TRUE.equals(val) ? View.VISIBLE : View.GONE);
+              }
           });
     }
 
     private void refreshPinnedBanner() {
+        if (pinnedBanner == null) return;
         if (pinnedList.isEmpty()) { pinnedBanner.setVisibility(View.GONE); return; }
         pinnedBanner.setVisibility(View.VISIBLE);
         if (pinnedViewIdx >= pinnedList.size()) pinnedViewIdx = 0;
@@ -263,7 +281,7 @@ public class ChatMediaActivity extends BaseActivity {
         Object preview = pin.get("preview");
         // Decrypt the stored preview for display
         String displayPreview = preview != null ? EncryptionHelper.decrypt(this, preview.toString()) : "Pinned message";
-        pinnedText.setText(displayPreview);
+        if (pinnedText != null) pinnedText.setText(displayPreview);
         if (pinnedCount != null) {
             if (pinnedList.size() > 1)
                 pinnedCount.setText((pinnedViewIdx + 1) + "/" + pinnedList.size());
@@ -380,9 +398,9 @@ public class ChatMediaActivity extends BaseActivity {
     // ══════════════════════════════════════════════════════════════
 
     private void onUserTyping() {
+        if (conversationId == null || myUid == null) return;
         if (!isTyping) {
             isTyping = true;
-            // Guard typing writes (#25)
             if (costGuard.canWrite(1)) {
                 db.collection("conversations").document(conversationId)
                   .update("typing_" + myUid, true);
@@ -392,7 +410,7 @@ public class ChatMediaActivity extends BaseActivity {
         typingHandler.removeCallbacksAndMessages(null);
         typingHandler.postDelayed(() -> {
             isTyping = false;
-            if (costGuard.canWrite(1)) {
+            if (conversationId != null && myUid != null && costGuard.canWrite(1)) {
                 db.collection("conversations").document(conversationId)
                   .update("typing_" + myUid, false);
                 costGuard.recordWrites(1);
@@ -408,14 +426,16 @@ public class ChatMediaActivity extends BaseActivity {
         pendingReplyId      = msg.getId();
         pendingReplyPreview = (msg.getText() != null && !msg.getText().isEmpty())
             ? msg.getText() : "[media]";
-        replyPreviewBarText.setText("Replying to: " + pendingReplyPreview);
-        replyPreviewBar.setVisibility(View.VISIBLE);
-        messageInput.requestFocus();
+        if (replyPreviewBarText != null)
+            replyPreviewBarText.setText("Replying to: " + pendingReplyPreview);
+        if (replyPreviewBar != null)
+            replyPreviewBar.setVisibility(View.VISIBLE);
+        if (messageInput != null) messageInput.requestFocus();
     }
 
     private void clearReplyMode() {
         pendingReplyId = null; pendingReplyPreview = null;
-        replyPreviewBar.setVisibility(View.GONE);
+        if (replyPreviewBar != null) replyPreviewBar.setVisibility(View.GONE);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -653,6 +673,7 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     private void listenForMessages() {
+        if (msgListener != null) return;  // already registered
         if (!costGuard.canRead(1)) {
             Toast.makeText(this, "Daily read limit reached.", Toast.LENGTH_LONG).show(); return;
         }
