@@ -2,23 +2,22 @@
  * notifyOnMessage
  *
  * Triggered whenever a new message lands in:
- *   conversations/{conversationId}/messages/{messageId}
+ *   chats/{chatId}/messages/{messageId}
  *
  * Responsibilities:
- *  1. Look up the conversation document to find participants.
+ *  1. Look up the chat document to find participants.
  *  2. Identify the recipient (the participant who is NOT the sender).
  *  3. Fetch the recipient's FCM token from users/{recipientUid}.
  *  4. Send a data-only FCM push so the app wakes up silently and syncs.
  *  5. Mark the message document as delivered with a server timestamp.
  *
- * NOTE: The Android app's PairingManager must write a `participants` array
- * (two UIDs) to the conversation document when pairing completes. Without it
- * this function skips the notification gracefully.
+ * NOTE: PairingManager writes a `participants` array (two UIDs) to the chat
+ * document when pairing completes. Without it this function skips gracefully.
  *
  * Firestore shape expected:
- *   conversations/{convId}          { participants: [uid1, uid2] }
- *   conversations/{convId}/messages/{msgId}  { sender, text, timestamp, isEncrypted, mediaUrl? }
- *   users/{uid}                     { fcmToken, ecPublicKey }
+ *   chats/{chatId}                     { participants: [uid1, uid2] }
+ *   chats/{chatId}/messages/{msgId}    { sender, text, timestamp, isEncrypted, path? }
+ *   users/{uid}                        { fcmToken, ecPublicKey }
  */
 
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
@@ -27,12 +26,12 @@ import { getMessaging } from "firebase-admin/messaging";
 import { logger } from "firebase-functions";
 
 export const notifyOnMessage = onDocumentCreated(
-  "conversations/{conversationId}/messages/{messageId}",
+  "chats/{chatId}/messages/{messageId}",
   async (event) => {
     const snap = event.data;
     if (!snap) return;
 
-    const { conversationId, messageId } = event.params;
+    const { chatId, messageId } = event.params;
     const messageData = snap.data();
     const senderUid: string | undefined = messageData?.sender;
 
@@ -43,16 +42,16 @@ export const notifyOnMessage = onDocumentCreated(
 
     const db = getFirestore();
 
-    // 1. Load conversation to find participants
-    const convDoc = await db.collection("conversations").doc(conversationId).get();
-    if (!convDoc.exists) {
-      logger.warn("notifyOnMessage: conversation doc not found", { conversationId });
+    // 1. Load chat to find participants
+    const chatDoc = await db.collection("chats").doc(chatId).get();
+    if (!chatDoc.exists) {
+      logger.warn("notifyOnMessage: chat doc not found", { chatId });
       return;
     }
 
-    const participants: string[] | undefined = convDoc.data()?.participants;
+    const participants: string[] | undefined = chatDoc.data()?.participants;
     if (!participants || participants.length !== 2) {
-      logger.warn("notifyOnMessage: participants not set on conversation", { conversationId });
+      logger.warn("notifyOnMessage: participants not set on chat", { chatId });
       return;
     }
 
@@ -76,7 +75,7 @@ export const notifyOnMessage = onDocumentCreated(
           token: fcmToken,
           data: {
             type: "new_message",
-            conversationId,
+            chatId,
             messageId,
             // Body text is intentionally vague — actual content is end-to-end encrypted
             title: "DuoShield",
@@ -96,7 +95,7 @@ export const notifyOnMessage = onDocumentCreated(
     // 5. Mark message as delivered with a server timestamp
     try {
       await snap.ref.update({
-        delivered: true,
+        status: "delivered",
         deliveredAt: FieldValue.serverTimestamp(),
       });
     } catch (err) {

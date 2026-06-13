@@ -8,7 +8,7 @@
  * guarantees cleanup even when both devices are offline or uninstalled.
  *
  * Firestore shape expected:
- *   conversations/{convId}/messages/{msgId}  { selfDestructAt: Timestamp }
+ *   chats/{chatId}/messages/{msgId}  { selfDestructAt: Timestamp }
  *
  * Android side: when sending a message, compute selfDestructAt as:
  *   selfDestructAt = Timestamp.fromMillis(Date.now() + ttlMinutes * 60_000)
@@ -36,19 +36,19 @@ export const scheduledSelfDestruct = onSchedule(
 
     logger.info("scheduledSelfDestruct: starting sweep", { now: now.toDate().toISOString() });
 
-    // Iterate all conversations
-    const conversationSnap = await db.collection("conversations").get();
+    // Iterate all chats (current schema)
+    const chatSnap = await db.collection("chats").get();
 
-    for (const convDoc of conversationSnap.docs) {
-      const convId = convDoc.id;
+    for (const chatDoc of chatSnap.docs) {
+      const chatId = chatDoc.id;
 
-      // Query expired messages in this conversation
+      // Query expired messages in this chat
       const expiredSnap = await db
-        .collection("conversations")
-        .doc(convId)
+        .collection("chats")
+        .doc(chatId)
         .collection("messages")
         .where("selfDestructAt", "<=", now)
-        .limit(500) // cap per-conversation per-run to avoid timeouts
+        .limit(500) // cap per-chat per-run to avoid timeouts
         .get();
 
       if (expiredSnap.empty) continue;
@@ -64,7 +64,7 @@ export const scheduledSelfDestruct = onSchedule(
 
         if (batchCount === BATCH_SIZE) {
           await batch.commit();
-          logger.info("scheduledSelfDestruct: committed batch", { convId, batchCount });
+          logger.info("scheduledSelfDestruct: committed batch", { chatId, batchCount });
           batch = db.batch();
           batchCount = 0;
         }
@@ -73,7 +73,7 @@ export const scheduledSelfDestruct = onSchedule(
       // Commit any remaining
       if (batchCount > 0) {
         await batch.commit();
-        logger.info("scheduledSelfDestruct: committed final batch", { convId, batchCount });
+        logger.info("scheduledSelfDestruct: committed final batch", { chatId, batchCount });
       }
     }
 

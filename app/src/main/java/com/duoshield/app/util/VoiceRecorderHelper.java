@@ -3,11 +3,14 @@ package com.duoshield.app.util;
 import android.content.Context;
 import android.media.MediaRecorder;
 import android.os.Build;
+import android.util.Log;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
 public class VoiceRecorderHelper {
+
+    private static final String TAG = "VoiceRecorderHelper";
 
     public interface RecorderListener {
         void onAmplitude(int amplitude);
@@ -49,20 +52,45 @@ public class VoiceRecorderHelper {
                 }
             };
             handler.post(ampRunnable);
-        } catch (Exception e) { cb.onError(e.getMessage()); }
+        } catch (Exception e) {
+            cb.onError(e.getMessage());
+        }
     }
 
     public void stop() {
-        if (handler != null && ampRunnable != null) handler.removeCallbacks(ampRunnable);
-        try {
-            if (recorder != null) { recorder.stop(); recorder.release(); recorder = null; }
-            if (listener != null) listener.onStopped(outputPath, new ArrayList<>(amplitudes));
-        } catch (Exception ignored) {}
+        if (handler != null && ampRunnable != null) {
+            handler.removeCallbacks(ampRunnable);
+        }
+
+        boolean recordingStopped = false;
+        if (recorder != null) {
+            try {
+                recorder.stop();
+                recordingStopped = true;
+            } catch (Exception e) {
+                // IllegalStateException if stop() called before any data was recorded
+                Log.w(TAG, "recorder.stop() failed (recording may be too short): " + e.getMessage());
+            }
+            try { recorder.release(); } catch (Exception ignored) {}
+            recorder = null;
+        }
+
+        if (recordingStopped && listener != null) {
+            listener.onStopped(outputPath, new ArrayList<>(amplitudes));
+        } else if (!recordingStopped && listener != null) {
+            listener.onError("Recording was too short or failed to stop.");
+        }
     }
 
     public void cancel() {
-        if (handler != null && ampRunnable != null) handler.removeCallbacks(ampRunnable);
-        try { if (recorder != null) { recorder.stop(); recorder.release(); recorder = null; } } catch (Exception ignored) {}
+        if (handler != null && ampRunnable != null) {
+            handler.removeCallbacks(ampRunnable);
+        }
+        if (recorder != null) {
+            try { recorder.stop(); } catch (Exception ignored) {}
+            try { recorder.release(); } catch (Exception ignored) {}
+            recorder = null;
+        }
         if (outputPath != null) new File(outputPath).delete();
     }
 }
