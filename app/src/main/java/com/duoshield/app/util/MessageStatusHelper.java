@@ -14,15 +14,15 @@ public class MessageStatusHelper {
         tick.setVisibility(View.VISIBLE);
         String status = msg.getStatus();
         if ("read".equals(status)) {
+            // ✓✓ blue — partner opened the chat and saw the message
             tick.setImageResource(R.drawable.ic_done_all);
             tick.setImageTintList(ColorStateList.valueOf(0xFF2AABB8));
-        } else if ("delivered".equals(status)) {
-            tick.setImageResource(R.drawable.ic_done_all);
-            tick.setImageTintList(ColorStateList.valueOf(0xFF90A4AE));
-        } else if ("sent".equals(status) || msg.isDelivered()) {
+        } else if ("delivered".equals(status) || msg.isDelivered()) {
+            // ✓✓ grey — partner device received it
             tick.setImageResource(R.drawable.ic_done_all);
             tick.setImageTintList(ColorStateList.valueOf(0xFF90A4AE));
         } else {
+            // ✓ grey — sent to server, partner not yet received ("sent", "pending", null)
             tick.setImageResource(R.drawable.ic_done);
             tick.setImageTintList(ColorStateList.valueOf(0xFF9E9E9E));
         }

@@ -40,6 +40,7 @@ import com.duoshield.app.ui.MessageAdapter;
 import com.duoshield.app.ui.SettingsActivity;
 import com.duoshield.app.util.EncryptionHelper;
 import com.duoshield.app.util.FirebaseCostGuard;
+import com.duoshield.app.util.ReadReceiptHelper;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.FieldValue;
@@ -214,6 +215,21 @@ public class ChatMediaActivity extends BaseActivity {
         markAsSeen();
         clearBadge();
         applyWallpaper();
+        // Chat is visible — mark all partner messages as read (double blue ticks)
+        if (conversationId != null && myUid != null) {
+            ReadReceiptHelper.markAllRead(conversationId, myUid);
+            dbExecutor.execute(() -> AppDatabase.getInstance(ChatMediaActivity.this)
+                .messageDao().markAllRead(conversationId, myUid));
+            // Update in-memory list immediately so sender sees blue ticks without waiting
+            for (int i = 0; i < messages.size(); i++) {
+                Message msg = messages.get(i);
+                if (msg.getSender() != null && !myUid.equals(msg.getSender())
+                        && !"read".equals(msg.getStatus())) {
+                    msg.setStatus("read");
+                    adapter.notifyItemChanged(i);
+                }
+            }
+        }
     }
 
     @Override protected void onStart() {
@@ -716,7 +732,10 @@ public class ChatMediaActivity extends BaseActivity {
                           }
                           if (alreadyExists) continue;
 
+                          String docStatus = dc.getDocument().getString("status");
+
                           Message m = new Message(); m.setId(id); m.setConversationId(convo); m.setSender(from); m.setText(text); m.setTimestamp(ts); m.setEncrypted(Boolean.TRUE.equals(enc)); m.setMediaUrl(mUrl); m.setMediaType(mType);
+                          m.setStatus(docStatus != null ? docStatus : "sent");
                           if (rpId  != null) m.setReplyToId(rpId);
                           if (rpPrv != null) m.setReplyPreview(rpPrv);
                           if (expAt != null) m.setExpiresAt(expAt);
@@ -726,18 +745,33 @@ public class ChatMediaActivity extends BaseActivity {
                           recyclerView.scrollToPosition(messages.size() - 1);
                           saveToRoom(m);
                           added = true;
+
+                          // Mark partner messages as delivered the moment this device receives them
+                          if (myUid != null && !myUid.equals(from)
+                                  && !"delivered".equals(m.getStatus())
+                                  && !"read".equals(m.getStatus())) {
+                              m.setStatus("delivered");
+                              final String deliverId = id;
+                              db.collection("conversations").document(conversationId)
+                                .collection("messages").document(deliverId)
+                                .update("status", "delivered");
+                              dbExecutor.execute(() -> AppDatabase.getInstance(ChatMediaActivity.this)
+                                  .messageDao().updateStatus(deliverId, "delivered"));
+                          }
                       }
                   } else if (dc.getType() == DocumentChange.Type.MODIFIED) {
-                      String id       = dc.getDocument().getString("id");
-                      String newText  = dc.getDocument().getString("text");
-                      Boolean enc     = dc.getDocument().getBoolean("isEncrypted");
-                      String reaction = dc.getDocument().getString("reaction");
+                      String id        = dc.getDocument().getString("id");
+                      String newText   = dc.getDocument().getString("text");
+                      Boolean enc      = dc.getDocument().getBoolean("isEncrypted");
+                      String reaction  = dc.getDocument().getString("reaction");
+                      String newStatus = dc.getDocument().getString("status");
                       if (Boolean.TRUE.equals(enc) && newText != null) {
                           newText = EncryptionHelper.decrypt(ChatMediaActivity.this, newText);
                       }
                       for (int i = 0; i < messages.size(); i++) {
                           if (messages.get(i).getId() != null && messages.get(i).getId().equals(id)) {
-                              if (newText != null) messages.get(i).setText(newText);
+                              if (newText   != null) messages.get(i).setText(newText);
+                              if (newStatus != null) messages.get(i).setStatus(newStatus);
                               messages.get(i).setReaction(reaction);
                               adapter.notifyItemChanged(i); break;
                           }
