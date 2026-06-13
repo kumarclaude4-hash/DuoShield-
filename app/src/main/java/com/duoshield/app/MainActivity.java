@@ -67,27 +67,83 @@ public class MainActivity extends AppCompatActivity {
         // 2. Notification channels
         NotificationHelper.createChannel(this);
 
-        // 3. Refresh FCM token
         SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
+        String myUid = FirebaseAuth.getInstance().getUid();
+        if (myUid != null) {
+            prefs.edit().putString("my_uid", myUid).apply();
+        }
+
+        // 3. Refresh FCM token + upload EC public key so partners can always find it
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
         FirebaseMessaging.getInstance().getToken()
                 .addOnSuccessListener(token -> {
                     prefs.edit().putString("fcm_token", token).apply();
-                    String myUid = prefs.getString("my_uid", null);
                     if (myUid != null) {
-                        FirebaseFirestore.getInstance()
-                                .collection("users")
-                                .document(myUid)
-                                .set(Collections.singletonMap("fcmToken", token),
-                                     SetOptions.merge());
+                        java.util.Map<String, Object> updates = new java.util.HashMap<>();
+                        updates.put("fcmToken", token);
+                        // Always publish the EC public key so pairing partners can find it
+                        String ecPub = CryptoInitializer.getMyPublicKeyB64(this);
+                        if (ecPub != null) updates.put("ecPublicKey", ecPub);
+                        db.collection("users").document(myUid).set(updates, SetOptions.merge());
                     }
                 });
 
+        // 4. Route: if paired locally, go straight to chat; otherwise restore from Firestore
         boolean isPaired = prefs.getBoolean("is_paired", false);
-        Intent intent = isPaired
-            ? new Intent(this, ConversationListActivity.class)
-            : new Intent(this, com.duoshield.app.ui.PairingActivity.class);
+        String convId = prefs.getString("conversation_id", null);
 
-        startActivity(intent);
-        finish();
+        if (isPaired && convId != null) {
+            startActivity(new Intent(this, ConversationListActivity.class));
+            finish();
+            return;
+        }
+
+        // Try to restore pairing from Firestore (handles re-login on same device)
+        if (myUid != null) {
+            db.collection("chats")
+              .whereArrayContains("participants", myUid)
+              .limit(1)
+              .get()
+              .addOnSuccessListener(chats -> {
+                  if (!chats.isEmpty()) {
+                      com.google.firebase.firestore.DocumentSnapshot chatDoc =
+                              chats.getDocuments().get(0);
+                      String chatId = chatDoc.getId();
+                      @SuppressWarnings("unchecked")
+                      java.util.List<String> parts =
+                              (java.util.List<String>) chatDoc.get("participants");
+                      String partnerUid = null;
+                      if (parts != null) {
+                          for (String p : parts) {
+                              if (!p.equals(myUid)) { partnerUid = p; break; }
+                          }
+                      }
+                      if (partnerUid != null) {
+                          prefs.edit()
+                              .putBoolean("is_paired", true)
+                              .putString("conversation_id", chatId)
+                              .putString("partner_uid", partnerUid)
+                              .apply();
+                          startActivity(new Intent(MainActivity.this, ConversationListActivity.class));
+                      } else {
+                          startActivity(new Intent(MainActivity.this,
+                                  com.duoshield.app.ui.PairingActivity.class));
+                      }
+                  } else {
+                      startActivity(new Intent(MainActivity.this,
+                              com.duoshield.app.ui.PairingActivity.class));
+                  }
+                  finish();
+              })
+              .addOnFailureListener(e -> {
+                  startActivity(new Intent(MainActivity.this,
+                          isPaired ? ConversationListActivity.class
+                                   : com.duoshield.app.ui.PairingActivity.class));
+                  finish();
+              });
+        } else {
+            startActivity(new Intent(this, com.duoshield.app.ui.PairingActivity.class));
+            finish();
+        }
     }
 }

@@ -382,6 +382,126 @@ public class SignInActivity extends AppCompatActivity {
         prefs.edit().putString("my_uid", uid).apply();
         FcmTokenHelper.register(this);
         AppLockManager.onAppForegrounded(this);
+        restoreStateFromFirestore(uid, prefs);
+    }
+
+    /**
+     * Restores account state from Firestore after sign-in / re-login.
+     * Fetches userId (DS-XXXXXXXX), conversation_id, and partner_uid so
+     * the user lands in their chat rather than PairingActivity on re-login.
+     */
+    @SuppressWarnings("unchecked")
+    private void restoreStateFromFirestore(String uid, SharedPreferences prefs) {
+        db.collection("users").document(uid).get()
+            .addOnSuccessListener(userDoc -> {
+                SharedPreferences.Editor ed = prefs.edit();
+
+                // Restore DS-XXXXXXXX user ID
+                String savedUserId = prefs.getString("my_user_id", null);
+                if (savedUserId == null) {
+                    String firestoreUserId = userDoc.getString("userId");
+                    if (firestoreUserId != null) ed.putString("my_user_id", firestoreUserId);
+                }
+                ed.apply();
+
+                // If already marked as paired locally, just navigate
+                if (prefs.getBoolean("is_paired", false)
+                        && prefs.getString("conversation_id", null) != null) {
+                    navigateAfterRestore(prefs);
+                    return;
+                }
+
+                // Try to restore pairing from Firestore chats
+                db.collection("chats")
+                    .whereArrayContains("participants", uid)
+                    .limit(1)
+                    .get()
+                    .addOnSuccessListener(chats -> {
+                        if (!chats.isEmpty()) {
+                            com.google.firebase.firestore.DocumentSnapshot chatDoc =
+                                chats.getDocuments().get(0);
+                            String chatId = chatDoc.getId();
+                            java.util.List<String> participants = null;
+                            Object raw = chatDoc.get("participants");
+                            if (raw instanceof java.util.List) {
+                                try { participants = (java.util.List<String>) raw; }
+                                catch (ClassCastException ignored) {}
+                            }
+                            String partnerUid = null;
+                            if (participants != null) {
+                                for (String p : participants) {
+                                    if (!p.equals(uid)) { partnerUid = p; break; }
+                                }
+                            }
+                            if (partnerUid != null) {
+                                final String finalPartner = partnerUid;
+                                prefs.edit()
+                                    .putBoolean("is_paired", true)
+                                    .putString("conversation_id", chatId)
+                                    .putString("partner_uid", partnerUid)
+                                    .apply();
+                                // Attempt to re-derive ECDH shared key in background
+                                reDeriveEcdhIfNeeded(uid, finalPartner);
+                            }
+                        }
+                        navigateAfterRestore(prefs);
+                    })
+                    .addOnFailureListener(e -> navigateAfterRestore(prefs));
+            })
+            .addOnFailureListener(e -> navigateAfterRestore(prefs));
+    }
+
+    /**
+     * Re-derives the ECDH shared key if missing, using Firestore-stored public keys.
+     * Handles both re-login (same device) and reinstall (new EC key pair).
+     */
+    private void reDeriveEcdhIfNeeded(String myUid, String partnerUid) {
+        android.content.SharedPreferences secure =
+            com.duoshield.app.util.SecurePrefs.get(getApplicationContext());
+        String existing = secure.getString(
+            com.duoshield.app.crypto.CryptoInitializer.KEY_SHARED_AES, null);
+        if (existing != null) return; // already have the shared key
+
+        // Fetch partner's current EC public key from Firestore
+        db.collection("users").document(partnerUid).get()
+            .addOnSuccessListener(doc -> {
+                String partnerPub = doc.getString("ecPublicKey");
+                if (partnerPub == null) return;
+                // Crypto work on background thread
+                new Thread(() -> {
+                    try {
+                        java.security.PrivateKey myPriv =
+                            com.duoshield.app.crypto.CryptoInitializer
+                                .getMyPrivateKey(getApplicationContext());
+                        if (myPriv == null) {
+                            // Reinstall: generate a new EC key pair and publish it
+                            com.duoshield.app.crypto.CryptoInitializer
+                                .ensureKeyExists(getApplicationContext());
+                            myPriv = com.duoshield.app.crypto.CryptoInitializer
+                                .getMyPrivateKey(getApplicationContext());
+                            if (myPriv == null) return;
+                            String newPub = com.duoshield.app.crypto.CryptoInitializer
+                                .getMyPublicKeyB64(getApplicationContext());
+                            if (newPub != null) {
+                                db.collection("users").document(myUid)
+                                  .set(java.util.Collections.singletonMap("ecPublicKey", newPub),
+                                       com.google.firebase.firestore.SetOptions.merge());
+                            }
+                        }
+                        javax.crypto.SecretKey sk =
+                            com.duoshield.app.crypto.ECDHHelper.deriveSharedKey(myPriv, partnerPub);
+                        String b64 = android.util.Base64.encodeToString(
+                            sk.getEncoded(), android.util.Base64.NO_WRAP);
+                        secure.edit()
+                            .putString(com.duoshield.app.crypto.CryptoInitializer.KEY_SHARED_AES, b64)
+                            .putString(com.duoshield.app.crypto.CryptoInitializer.KEY_PARTNER_EC_PUBLIC, partnerPub)
+                            .apply();
+                    } catch (Exception ignored) {}
+                }).start();
+            });
+    }
+
+    private void navigateAfterRestore(SharedPreferences prefs) {
         boolean isPaired = prefs.getBoolean("is_paired", false);
         Intent intent = isPaired
                 ? new Intent(this, ConversationListActivity.class)

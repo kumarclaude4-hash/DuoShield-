@@ -81,6 +81,10 @@ public class PairingActivity extends BaseActivity {
 
         pairingManager  = new PairingManager(this);
 
+        // Upload own EC public key to Firestore immediately so partners can find it
+        // when they scan our QR code before we've actively connected to anyone.
+        uploadMyEcPublicKey();
+
         tvMyUserId      = findViewById(R.id.tvMyCode);
         etPartnerUserId = findViewById(R.id.etPartnerCode);
         btnCopyMyId     = findViewById(R.id.btnCopyCode);
@@ -120,6 +124,26 @@ public class PairingActivity extends BaseActivity {
                 startConnect(partnerId);
             });
         }
+    }
+
+    // ── Upload own EC public key on activity open ─────────────────────────────
+
+    /**
+     * Publishes this device's EC public key to Firestore so a partner can
+     * derive the ECDH shared key when they scan our QR code, even before we
+     * actively trigger a connect ourselves.
+     */
+    private void uploadMyEcPublicKey() {
+        com.google.firebase.auth.FirebaseUser me =
+            com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+        if (me == null) return;
+        com.duoshield.app.crypto.CryptoInitializer.ensureKeyExists(this);
+        String pub = com.duoshield.app.crypto.CryptoInitializer.getMyPublicKeyB64(this);
+        if (pub == null) return;
+        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            .collection("users").document(me.getUid())
+            .set(java.util.Collections.singletonMap("ecPublicKey", pub),
+                 com.google.firebase.firestore.SetOptions.merge());
     }
 
     // ── Copy own ID ───────────────────────────────────────────────────────────

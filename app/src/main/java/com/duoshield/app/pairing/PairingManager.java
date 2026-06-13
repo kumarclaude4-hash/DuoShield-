@@ -51,8 +51,8 @@ public class PairingManager {
     private static final String KEY_MY_UID      = "my_uid";
     private static final String KEY_PARTNER_UID = "partner_uid";
 
-    private static final int  KEY_FETCH_RETRIES  = 3;
-    private static final long KEY_FETCH_DELAY_MS = 1500L;
+    private static final int  KEY_FETCH_RETRIES  = 8;
+    private static final long KEY_FETCH_DELAY_MS = 2000L;
 
     private final Context         context;
     private final FirebaseFirestore db;

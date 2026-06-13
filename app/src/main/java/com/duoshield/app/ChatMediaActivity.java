@@ -33,6 +33,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.duoshield.app.crypto.CryptoHelper;
 import com.duoshield.app.crypto.CryptoInitializer;
+import com.duoshield.app.crypto.ECDHHelper;
 import com.duoshield.app.crypto.KeyManager;
 import com.duoshield.app.db.AppDatabase;
 import com.duoshield.app.models.Message;
@@ -40,9 +41,14 @@ import com.duoshield.app.models.Message;
 import com.duoshield.app.ui.MessageAdapter;
 import com.duoshield.app.ui.SettingsActivity;
 import com.duoshield.app.ui.WaveformView;
+import com.duoshield.app.util.DeliveryReceiptHelper;
+import com.duoshield.app.util.SecurePrefs;
 import com.duoshield.app.util.VoiceMessagePlayer;
 import com.duoshield.app.util.VoiceRecorderHelper;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.SetOptions;
+import com.google.firebase.firestore.WriteBatch;
 import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.Signature;
@@ -266,6 +272,7 @@ public class ChatMediaActivity extends BaseActivity {
 
         applyWallpaper();
         loadPartnerInfo();
+        reEnsureEcdhKey();   // Fix encryption: re-derive shared key if missing or stale
         listenForMessages();
         listenForConvUpdates();
 
@@ -599,7 +606,7 @@ public class ChatMediaActivity extends BaseActivity {
 
     @Override protected void onResume() {
         super.onResume();
-        markAsSeen();
+        markMessagesAsReadAndSeen();
         clearBadge();
         applyWallpaper();
     }
@@ -665,7 +672,9 @@ public class ChatMediaActivity extends BaseActivity {
           .collection("messages").orderBy("timestamp")
           .addSnapshotListener((snaps, e) -> {
               if (snaps == null) return;
-              boolean changed = false;
+              boolean newMessageAdded = false;
+              List<Message> newIncoming = new ArrayList<>();
+
               for (DocumentChange dc : snaps.getDocumentChanges()) {
                   if (dc.getType() == DocumentChange.Type.ADDED) {
                       String id    = dc.getDocument().getString("id");
@@ -687,10 +696,21 @@ public class ChatMediaActivity extends BaseActivity {
                       if (serverTs != null) ts = serverTs.toDate().getTime();
 
                       if (id != null) {
-                          // Skip if already in local list
+                          // If already in local list (optimistic entry), just update its status
                           boolean exists = false;
-                          for (Message m : adapter.getMessages())
-                              if (id.equals(m.getId())) { exists = true; break; }
+                          for (Message m : adapter.getMessages()) {
+                              if (id.equals(m.getId())) {
+                                  exists = true;
+                                  // Update status from Firestore (e.g. "pending" → "sent")
+                                  String fsStatus = dc.getDocument().getString("status");
+                                  if (fsStatus != null) {
+                                      adapter.updateMessage(id, msg -> msg.setStatus(fsStatus));
+                                  } else if ("pending".equals(m.getStatus())) {
+                                      adapter.updateMessage(id, msg -> msg.setStatus("sent"));
+                                  }
+                                  break;
+                              }
+                          }
                           if (exists) continue;
 
                           Boolean isEncFlag = dc.getDocument().getBoolean("isEncrypted");
@@ -713,28 +733,46 @@ public class ChatMediaActivity extends BaseActivity {
                               }
                           }
 
+                          String statusFromFs = dc.getDocument().getString("status");
                           Message m = new Message(id, convo, from, displayText, ts, wasEncrypted, mUrl, mType);
-                          if (rpId  != null) m.setReplyToId(rpId);
-                          if (rpPrv != null) m.setReplyPreview(rpPrv);
-                          if (expAt != null) m.setExpiresAt(expAt);
+                          if (rpId      != null) m.setReplyToId(rpId);
+                          if (rpPrv     != null) m.setReplyPreview(rpPrv);
+                          if (expAt     != null) m.setExpiresAt(expAt);
+                          if (statusFromFs != null) m.setStatus(statusFromFs);
                           if (isExpired(m)) continue;
 
                           adapter.appendMessage(m);
                           saveToRoom(m);
-                          changed = true;
+                          newMessageAdded = true;
+
+                          // Track incoming partner messages for delivery receipt
+                          if (!myUid.equals(from)) newIncoming.add(m);
                       }
+
                   } else if (dc.getType() == DocumentChange.Type.MODIFIED) {
+                      // Handle status updates (ticks) AND reaction updates
                       String id       = dc.getDocument().getString("id");
                       String reaction = dc.getDocument().getString("reaction");
+                      String status   = dc.getDocument().getString("status");
                       if (id != null) {
-                          String finalId = id; String finalReaction = reaction;
-                          adapter.updateMessage(id, msg -> msg.setReaction(finalReaction));
+                          final String finalReaction = reaction;
+                          final String finalStatus   = status;
+                          adapter.updateMessage(id, msg -> {
+                              if (finalReaction != null) msg.setReaction(finalReaction);
+                              if (finalStatus   != null) msg.setStatus(finalStatus);
+                          });
                       }
                   }
               }
-              if (changed) {
+
+              if (newMessageAdded) {
                   int last = adapter.getItemCount() - 1;
                   if (last >= 0) recyclerView.scrollToPosition(last);
+              }
+
+              // Mark newly received partner messages as "delivered"
+              if (!newIncoming.isEmpty()) {
+                  DeliveryReceiptHelper.markDelivered(conversationId, newIncoming, myUid);
               }
           });
     }
@@ -998,48 +1036,154 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     private void sendMessage(String plaintext) {
+        SecretKey k = CryptoInitializer.getSharedKey(this);
+        if (k == null) {
+            try { k = KeyManager.getKey(); } catch (Exception ignored) {}
+        }
+        if (k == null) {
+            try { KeyManager.generateKey(); k = KeyManager.getKey(); } catch (Exception ignored) {}
+        }
+        if (k == null) {
+            Toast.makeText(this,
+                "Waiting for encryption key — try again in a moment.", Toast.LENGTH_SHORT).show();
+            // Kick off async ECDH re-derive so next attempt succeeds
+            reEnsureEcdhKey();
+            return;
+        }
+
         String ciphertext;
         try {
-            SecretKey k = CryptoInitializer.getSharedKey(this);
-            if (k == null) k = KeyManager.getKey();
-            if (k == null) {
-                KeyManager.generateKey();
-                k = KeyManager.getKey();
-            }
-            if (k == null) throw new IllegalStateException("No encryption key available");
             ciphertext = CryptoHelper.encrypt(plaintext, k);
         } catch (Exception e) {
             Log.e(TAG, "Encryption failed", e);
-            Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show(); return;
+            Toast.makeText(this, "Encryption error", Toast.LENGTH_SHORT).show();
+            return;
         }
-        String msgId = UUID.randomUUID().toString(); long now = System.currentTimeMillis();
-        long exp = getDisappearMs() > 0 ? now + getDisappearMs() : 0;
-        String rId = pendingReplyId; String rPrv = pendingReplyPreview;
+
+        String msgId = UUID.randomUUID().toString();
+        long   now   = System.currentTimeMillis();
+        long   exp   = getDisappearMs() > 0 ? now + getDisappearMs() : 0;
+        String rId   = pendingReplyId;
+        String rPrv  = pendingReplyPreview;
         clearReplyMode();
+
+        // ── Optimistic UI: add message immediately so the sender sees it instantly ──
+        Message optimistic = new Message(msgId, conversationId, myUid, plaintext, now, false);
+        optimistic.setStatus("pending");
+        optimistic.setExpiresAt(exp);
+        if (rId != null) { optimistic.setReplyToId(rId); optimistic.setReplyPreview(rPrv); }
+        adapter.appendMessage(optimistic);
+        int last = adapter.getItemCount() - 1;
+        if (last >= 0) recyclerView.scrollToPosition(last);
+
         Map<String, Object> doc = new HashMap<>();
         doc.put("id", msgId); doc.put("conversationId", conversationId);
         doc.put("sender", myUid); doc.put("text", ciphertext);
         doc.put("isEncrypted", true); doc.put("type", "text");
+        doc.put("status", "sent");
         doc.put("expiresAt", exp);
         if (rId != null) { doc.put("replyToId", rId); doc.put("replyPreview", rPrv); }
         doc.put("timestamp", FieldValue.serverTimestamp());
-        final String fc = ciphertext;
+
         db.collection("chats").document(conversationId)
           .collection("messages").document(msgId).set(doc)
           .addOnSuccessListener(v -> {
-              Message m = new Message(msgId, conversationId, myUid, fc, now, true);
-              m.setExpiresAt(exp);
-              if (rId != null) { m.setReplyToId(rId); m.setReplyPreview(rPrv); }
-              saveToRoom(m);
+              // Update optimistic entry: status → "sent", and save plain text to Room
+              adapter.updateMessage(msgId, m -> m.setStatus("sent"));
+              Message stored = new Message(msgId, conversationId, myUid, ciphertext, now, true);
+              stored.setExpiresAt(exp);
+              stored.setStatus("sent");
+              if (rId != null) { stored.setReplyToId(rId); stored.setReplyPreview(rPrv); }
+              saveToRoom(stored);
               notifyPartner("DuoShield", "New message");
           })
-          .addOnFailureListener(e -> Toast.makeText(this, "Failed to send.", Toast.LENGTH_SHORT).show());
+          .addOnFailureListener(e -> {
+              // Remove the optimistic entry and show error
+              adapter.removeMessage(msgId);
+              Toast.makeText(this, "Failed to send. Check your connection.", Toast.LENGTH_SHORT).show();
+          });
     }
 
-    private void markAsSeen() {
+    /**
+     * Re-derives the ECDH shared key from Firestore-stored public keys.
+     * Called on chat open and whenever encryption fails due to a missing key.
+     * Handles the case where the user re-logged in or the partner re-installed.
+     */
+    private void reEnsureEcdhKey() {
+        if (partnerUid == null) return;
+        db.collection("users").document(partnerUid).get()
+            .addOnSuccessListener(doc -> {
+                String partnerPub = doc.getString("ecPublicKey");
+                if (partnerPub == null) return;
+
+                android.content.SharedPreferences secure = SecurePrefs.get(this);
+                String storedPartnerPub = secure.getString(
+                        CryptoInitializer.KEY_PARTNER_EC_PUBLIC, null);
+                SecretKey existingKey = CryptoInitializer.getSharedKey(this);
+
+                // Re-derive if key is absent OR if partner's public key changed (partner reinstalled)
+                if (existingKey != null && partnerPub.equals(storedPartnerPub)) return;
+
+                executor.execute(() -> {
+                    try {
+                        PrivateKey myPriv = CryptoInitializer.getMyPrivateKey(this);
+                        if (myPriv == null) {
+                            // Reinstall scenario: generate a new EC key pair and upload it
+                            CryptoInitializer.ensureKeyExists(this);
+                            myPriv = CryptoInitializer.getMyPrivateKey(this);
+                            if (myPriv == null) return;
+                            String newPub = CryptoInitializer.getMyPublicKeyB64(this);
+                            if (newPub != null && myUid != null) {
+                                db.collection("users").document(myUid)
+                                  .set(java.util.Collections.singletonMap("ecPublicKey", newPub),
+                                       SetOptions.merge());
+                            }
+                        }
+                        SecretKey sk  = ECDHHelper.deriveSharedKey(myPriv, partnerPub);
+                        String    b64 = android.util.Base64.encodeToString(
+                                sk.getEncoded(), android.util.Base64.NO_WRAP);
+                        secure.edit()
+                              .putString(CryptoInitializer.KEY_SHARED_AES,        b64)
+                              .putString(CryptoInitializer.KEY_PARTNER_EC_PUBLIC,  partnerPub)
+                              .apply();
+                        Log.d(TAG, "ECDH shared key (re-)derived successfully");
+                    } catch (Exception ex) {
+                        Log.w(TAG, "ECDH re-derive failed", ex);
+                    }
+                });
+            });
+    }
+
+    /**
+     * Marks own last-seen timestamp AND batch-updates all of the partner's
+     * messages in this chat to "read" so the sender sees blue double-ticks.
+     */
+    private void markMessagesAsReadAndSeen() {
         if (conversationId == null || myUid == null) return;
+
+        // Update lastSeen timestamp
         db.collection("chats").document(conversationId)
           .update("lastSeen_" + myUid, FieldValue.serverTimestamp());
+
+        if (partnerUid == null) return;
+
+        // Batch-update partner's sent/delivered messages → "read"
+        db.collection("chats").document(conversationId)
+          .collection("messages")
+          .whereEqualTo("sender", partnerUid)
+          .get()
+          .addOnSuccessListener(snaps -> {
+              if (snaps.isEmpty()) return;
+              WriteBatch batch = db.batch();
+              int count = 0;
+              for (DocumentSnapshot doc : snaps.getDocuments()) {
+                  String st = doc.getString("status");
+                  if ("read".equals(st)) continue;
+                  batch.update(doc.getReference(), "status", "read");
+                  if (++count == 450) { batch.commit(); batch = db.batch(); count = 0; }
+              }
+              if (count > 0) batch.commit();
+          });
     }
 
     private void saveToRoom(Message m) {
