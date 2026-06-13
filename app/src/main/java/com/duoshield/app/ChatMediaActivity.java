@@ -138,6 +138,7 @@ public class ChatMediaActivity extends BaseActivity {
     private String partnerUid;
 
     private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private ListenerRegistration  msgListener;
     private ListenerRegistration  convListener;
 
@@ -1144,4 +1145,3 @@ public class ChatMediaActivity extends BaseActivity {
             .getString("access_token");
     }
 }
-
