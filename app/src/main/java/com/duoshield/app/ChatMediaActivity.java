@@ -1,8 +1,10 @@
 package com.duoshield.app;
 
+import android.Manifest;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -23,6 +25,7 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -156,6 +159,16 @@ public class ChatMediaActivity extends BaseActivity {
             }
         });
 
+    private final ActivityResultLauncher<String> requestAudioPermissionLauncher =
+        registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+            if (granted) {
+                beginVoiceRecording();
+            } else {
+                Toast.makeText(this, "Microphone permission is required to record voice notes.",
+                        Toast.LENGTH_LONG).show();
+            }
+        });
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -244,8 +257,6 @@ public class ChatMediaActivity extends BaseActivity {
 
         applyWallpaper();
         loadPartnerInfo();
-        listenForMessages();
-        listenForConvUpdates();
 
         sendButton.setOnClickListener(v -> {
             String text = messageInput.getText().toString().trim();
@@ -340,11 +351,28 @@ public class ChatMediaActivity extends BaseActivity {
             .format(new java.util.Date(epochMs));
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        if (db != null && conversationId != null) {
+            if (msgListener == null) listenForMessages();
+            if (convListener == null) listenForConvUpdates();
+        }
+    }
+
     // ══════════════════════════════════════════════════════════════
     // VOICE RECORDING
     // ══════════════════════════════════════════════════════════════
 
     private void startVoiceRecording() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO);
+            return;
+        }
+        beginVoiceRecording();
+    }
+
+    private void beginVoiceRecording() {
         recordingSeconds = 0;
         recordingTimer.setText("0:00");
         recordingWaveform.clear();
@@ -353,18 +381,32 @@ public class ChatMediaActivity extends BaseActivity {
         if (inputBar != null) inputBar.setVisibility(View.GONE);
         recordingTimerHandler.post(timerTick);
 
-        recorder.start(this, new VoiceRecorderHelper.RecorderListener() {
-            @Override public void onAmplitude(int amp)  { recordingWaveform.addAmplitude(amp); }
-            @Override public void onStopped(String filePath, List<Integer> amplitudes) {
-                uploadVoiceNote(filePath, amplitudes);
-            }
-            @Override public void onError(String msg) {
-                runOnUiThread(() -> {
-                    Toast.makeText(ChatMediaActivity.this, "Recording error: " + msg, Toast.LENGTH_SHORT).show();
-                    dismissRecordingUI();
-                });
-            }
-        });
+        try {
+            recorder.start(this, new VoiceRecorderHelper.RecorderListener() {
+                @Override public void onAmplitude(int amp) {
+                    recordingWaveform.addAmplitude(amp);
+                }
+
+                @Override public void onStopped(String filePath, List<Integer> amplitudes) {
+                    uploadVoiceNote(filePath, amplitudes);
+                }
+
+                @Override public void onError(String msg) {
+                    runOnUiThread(() -> handleRecordingError(msg));
+                }
+            });
+        } catch (SecurityException e) {
+            Log.e(TAG, "Missing microphone permission", e);
+            handleRecordingError("Microphone permission is required to record voice notes.");
+        }
+    }
+
+    private void handleRecordingError(String msg) {
+        String detail = (msg == null || msg.trim().isEmpty())
+                ? "Unable to start recording." : msg;
+        Toast.makeText(this, "Recording error: " + detail, Toast.LENGTH_SHORT).show();
+        recordingTimerHandler.removeCallbacks(timerTick);
+        dismissRecordingUI();
     }
 
     private final Runnable timerTick = new Runnable() {
@@ -395,6 +437,10 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     private void uploadVoiceNote(String filePath, List<Integer> amplitudes) {
+        if (filePath == null || filePath.isEmpty()) {
+            Toast.makeText(this, "Voice recording was not saved.", Toast.LENGTH_SHORT).show();
+            return;
+        }
         File f = new File(filePath);
         if (!f.exists()) return;
         Uri fileUri = Uri.fromFile(f);
@@ -403,7 +449,8 @@ public class ChatMediaActivity extends BaseActivity {
         runOnUiThread(() -> { uploadProgress.setVisibility(View.VISIBLE); uploadProgress.setProgress(0); });
         ref.putFile(fileUri)
             .addOnProgressListener(s -> {
-                int pct = (int) (100.0 * s.getBytesTransferred() / s.getTotalByteCount());
+                long total = s.getTotalByteCount();
+                int pct = total > 0 ? (int) (100.0 * s.getBytesTransferred() / total) : 0;
                 runOnUiThread(() -> uploadProgress.setProgress(pct));
             })
             .addOnSuccessListener(s -> ref.getDownloadUrl().addOnSuccessListener(uri -> {
@@ -499,7 +546,7 @@ public class ChatMediaActivity extends BaseActivity {
         typingHandler.removeCallbacksAndMessages(null);
         recordingTimerHandler.removeCallbacks(timerTick);
         player.release();
-        if (isTyping && conversationId != null && myUid != null) {
+        if (isTyping && conversationId != null && myUid != null && db != null) {
             db.collection("conversations").document(conversationId)
               .update("typing_" + myUid, false);
             isTyping = false;
@@ -805,8 +852,11 @@ public class ChatMediaActivity extends BaseActivity {
         StorageReference ref = storageRef.child("media").child(conversationId).child(UUID.randomUUID() + ext);
         uploadProgress.setVisibility(View.VISIBLE); uploadProgress.setProgress(0);
         ref.putFile(fileUri)
-            .addOnProgressListener(s -> uploadProgress.setProgress(
-                (int) (100.0 * s.getBytesTransferred() / s.getTotalByteCount())))
+            .addOnProgressListener(s -> {
+                long total = s.getTotalByteCount();
+                uploadProgress.setProgress(total > 0
+                    ? (int) (100.0 * s.getBytesTransferred() / total) : 0);
+            })
             .addOnFailureListener(e -> { Toast.makeText(this, "Upload failed", Toast.LENGTH_SHORT).show(); uploadProgress.setVisibility(View.GONE); })
             .addOnSuccessListener(s -> ref.getDownloadUrl().addOnSuccessListener(uri -> {
                 uploadProgress.setVisibility(View.GONE);
@@ -888,7 +938,7 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     private void markAsSeen() {
-        if (conversationId == null || myUid == null) return;
+        if (conversationId == null || myUid == null || db == null) return;
         db.collection("conversations").document(conversationId)
           .update("lastSeen_" + myUid, FieldValue.serverTimestamp());
     }
