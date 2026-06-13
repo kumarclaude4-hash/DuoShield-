@@ -24,6 +24,7 @@ import com.duoshield.app.models.Message;
 import com.duoshield.app.util.DateHeaderHelper;
 import com.duoshield.app.util.LinkPreviewFetcher;
 import com.duoshield.app.util.LinkPreviewHelper;
+import com.duoshield.app.crypto.CryptoInitializer;
 import com.duoshield.app.util.SupabaseStorageHelper;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -204,29 +205,42 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
             h.videoContainer.setVisibility(View.VISIBLE);
             String vidRef = msg.getMediaUrl();
             if (SupabaseStorageHelper.isSupabasePath(vidRef)) {
-                // Load thumbnail via signed URL; guard against recycled ViewHolder
                 h.videoThumbnail.setTag(vidRef);
                 Glide.with(ctx).load(R.drawable.ic_play_video).into(h.videoThumbnail);
-                SupabaseStorageHelper.resolveSignedUrl(vidRef, new SupabaseStorageHelper.SignedUrlCallback() {
-                    @Override public void onSuccess(String url) {
+                javax.crypto.SecretKey vidKey = CryptoInitializer.getSharedKey(ctx);
+                // Thumbnail: decrypt bytes → Glide (Glide accepts byte[])
+                SupabaseStorageHelper.loadMedia(vidRef, vidKey, new SupabaseStorageHelper.MediaCallback() {
+                    @Override public void onLoaded(byte[] plainBytes) {
                         if (vidRef.equals(h.videoThumbnail.getTag())) {
-                            Glide.with(ctx).load(url)
+                            Glide.with(ctx).load(plainBytes)
                                  .placeholder(R.drawable.ic_play_video).centerCrop()
                                  .into(h.videoThumbnail);
                         }
                     }
-                    @Override public void onFailure(Exception e) { /* keep play-icon placeholder */ }
+                    @Override public void onError(Exception e) { /* keep play-icon placeholder */ }
                 });
-                // Resolve a fresh signed URL at tap time (TTL may have elapsed since bind)
+                // Playback: decrypt → write temp file → FileProvider → Intent
                 h.videoContainer.setOnClickListener(v ->
-                    SupabaseStorageHelper.resolveSignedUrl(vidRef, new SupabaseStorageHelper.SignedUrlCallback() {
-                        @Override public void onSuccess(String url) {
-                            Intent i = new Intent(Intent.ACTION_VIEW);
-                            i.setDataAndType(Uri.parse(url), "video/*");
-                            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                            ctx.startActivity(Intent.createChooser(i, "Play video"));
+                    SupabaseStorageHelper.loadMedia(vidRef, vidKey, new SupabaseStorageHelper.MediaCallback() {
+                        @Override public void onLoaded(byte[] plainBytes) {
+                            try {
+                                java.io.File tmp = java.io.File.createTempFile(
+                                        "vid_", ".mp4", ctx.getCacheDir());
+                                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tmp)) {
+                                    fos.write(plainBytes);
+                                }
+                                tmp.deleteOnExit();
+                                android.net.Uri fileUri = androidx.core.content.FileProvider.getUriForFile(
+                                        ctx, ctx.getPackageName() + ".provider", tmp);
+                                Intent i = new Intent(Intent.ACTION_VIEW);
+                                i.setDataAndType(fileUri, "video/mp4");
+                                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                ctx.startActivity(Intent.createChooser(i, "Play video"));
+                            } catch (Exception e) {
+                                Toast.makeText(ctx, "Couldn't play video", Toast.LENGTH_SHORT).show();
+                            }
                         }
-                        @Override public void onFailure(Exception e) {
+                        @Override public void onError(Exception e) {
                             Toast.makeText(ctx, "Couldn't load video", Toast.LENGTH_SHORT).show();
                         }
                     }));
@@ -272,18 +286,20 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
             h.imageView.setVisibility(View.VISIBLE);
             String imgRef = msg.getMediaUrl();
             if (SupabaseStorageHelper.isSupabasePath(imgRef)) {
-                // Tag the view so we can guard against recycled ViewHolders
+                // Tag guards against stale results in recycled ViewHolders
                 h.imageView.setTag(imgRef);
                 Glide.with(ctx).load(android.R.drawable.ic_menu_gallery).into(h.imageView);
-                SupabaseStorageHelper.resolveSignedUrl(imgRef, new SupabaseStorageHelper.SignedUrlCallback() {
-                    @Override public void onSuccess(String url) {
+                javax.crypto.SecretKey imgKey = CryptoInitializer.getSharedKey(ctx);
+                // Decrypt bytes → Glide.load(byte[]) — no signed URL ever exposed to UI
+                SupabaseStorageHelper.loadMedia(imgRef, imgKey, new SupabaseStorageHelper.MediaCallback() {
+                    @Override public void onLoaded(byte[] plainBytes) {
                         if (imgRef.equals(h.imageView.getTag())) {
-                            Glide.with(ctx).load(url)
+                            Glide.with(ctx).load(plainBytes)
                                  .placeholder(android.R.drawable.ic_menu_gallery)
                                  .into(h.imageView);
                         }
                     }
-                    @Override public void onFailure(Exception e) { /* keep placeholder */ }
+                    @Override public void onError(Exception e) { /* keep placeholder */ }
                 });
             } else {
                 // Legacy Firebase Storage URL

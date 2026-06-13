@@ -1,14 +1,19 @@
 package com.duoshield.app.firebase;
 
+import android.content.Context;
 import android.net.Uri;
 import android.util.Log;
+
+import com.duoshield.app.crypto.CryptoInitializer;
 import com.duoshield.app.util.SupabaseStorageHelper;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
+import javax.crypto.SecretKey;
+
 /**
- * Media helper — migrated from Firebase Storage to Supabase private bucket.
+ * Media helper — Supabase private bucket with AES-256-GCM E2E encryption.
  * Returns storage paths; never public URLs.
  */
 public class MediaHelper {
@@ -21,18 +26,22 @@ public class MediaHelper {
     }
 
     /**
-     * Uploads a file from {@code fileUri} to the Supabase private bucket.
-     * {@code path} is the desired storage path, e.g. {@code "media/chatId/uuid.jpg"}.
-     * {@code mimeType} must match the file content.
+     * Encrypts and uploads a file from {@code fileUri} to the private bucket.
+     *
+     * @param ctx      Used to open the URI and retrieve the shared key.
+     * @param fileUri  Source URI (image or video).
+     * @param path     Storage path, e.g. {@code "media/chatId/uuid.jpg"}.
+     * @param mimeType MIME type of the source file.
      */
-    public void uploadMedia(android.content.Context ctx, Uri fileUri,
-                            String path, String mimeType, UploadCallback cb) {
+    public void uploadMedia(Context ctx, Uri fileUri, String path,
+                            String mimeType, UploadCallback cb) {
         new Thread(() -> {
             try {
-                byte[] data = readUri(ctx, fileUri);
-                data = SupabaseStorageHelper.encryptBeforeUpload(data);
-                String storagePath = SupabaseStorageHelper.uploadFile(data, path, mimeType, null);
-                cb.onSuccess(storagePath);
+                byte[] plain  = readUri(ctx, fileUri);
+                SecretKey key = CryptoInitializer.getSharedKey(ctx);
+                byte[] data   = SupabaseStorageHelper.encryptBeforeUpload(plain, key);
+                String stored = SupabaseStorageHelper.uploadFile(data, path, mimeType, null);
+                cb.onSuccess(stored);
             } catch (Exception e) {
                 Log.w(TAG, "uploadMedia failed: " + e.getMessage());
                 cb.onFailure(e);
@@ -41,14 +50,15 @@ public class MediaHelper {
     }
 
     /**
-     * Resolves a short-lived signed URL for {@code path} from the private bucket.
-     * Use the URL immediately; never cache or store it.
+     * Resolves, downloads, and decrypts media for {@code path}.
+     * Delivers decrypted bytes on the main thread via {@code cb}.
      */
-    public void resolveSignedUrl(String path, SupabaseStorageHelper.SignedUrlCallback cb) {
-        SupabaseStorageHelper.resolveSignedUrl(path, cb);
+    public void loadMedia(Context ctx, String path, SupabaseStorageHelper.MediaCallback cb) {
+        SecretKey key = CryptoInitializer.getSharedKey(ctx);
+        SupabaseStorageHelper.loadMedia(path, key, cb);
     }
 
-    private static byte[] readUri(android.content.Context ctx, Uri uri) throws java.io.IOException {
+    private static byte[] readUri(Context ctx, Uri uri) throws java.io.IOException {
         InputStream is = ctx.getContentResolver().openInputStream(uri);
         if (is == null) throw new java.io.IOException("Cannot open: " + uri);
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {

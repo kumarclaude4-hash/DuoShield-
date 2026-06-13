@@ -5,25 +5,28 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 
+import com.duoshield.app.crypto.CryptoInitializer;
+
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
+import javax.crypto.SecretKey;
+
 /**
- * Upload helper — now backed by Supabase Storage (private bucket, signed URLs).
- * Firebase Storage has been fully removed from this class.
+ * Upload helper — Supabase Storage (private bucket, AES-256-GCM E2E encrypted).
+ * Returns storage PATHS, never URLs.
  */
 public class UploadHelper {
 
     public interface UploadCallback {
         void onProgress(int percent);
-        void onSuccess(String storagePath);   // returns PATH, not URL
+        void onSuccess(String storagePath);   // PATH only — store in Firestore
         void onFailure(Exception e);
     }
 
     /**
-     * Compresses {@code uri} to JPEG, encrypts (stub), then uploads to Supabase.
-     * Delivers a storage path via {@code cb.onSuccess} — store this path in Firestore,
-     * never the URL.
+     * Compresses {@code uri} to JPEG 80%, AES-256-GCM encrypts, then uploads.
+     * Delivers a storage path via {@code cb.onSuccess}.
      */
     public static void uploadImage(Context ctx, Uri uri, String convId, UploadCallback cb) {
         new Thread(() -> {
@@ -34,33 +37,31 @@ public class UploadHelper {
 
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 bmp.compress(Bitmap.CompressFormat.JPEG, 80, baos);
-                byte[] data = baos.toByteArray();
+                byte[] plain = baos.toByteArray();
 
-                // Encryption placeholder — swap body when E2E media encryption is ready
-                data = SupabaseStorageHelper.encryptBeforeUpload(data);
-
-                String path = "media/" + convId + "/images/" + System.currentTimeMillis() + ".jpg";
-                String storagePath = SupabaseStorageHelper.uploadFile(data, path, "image/jpeg", cb::onProgress);
-                cb.onSuccess(storagePath);
+                SecretKey key  = CryptoInitializer.getSharedKey(ctx);
+                byte[] data    = SupabaseStorageHelper.encryptBeforeUpload(plain, key);
+                String path    = "media/" + convId + "/images/" + System.currentTimeMillis() + ".jpg";
+                String stored  = SupabaseStorageHelper.uploadFile(data, path, "image/jpeg", cb::onProgress);
+                cb.onSuccess(stored);
 
             } catch (Exception e) { cb.onFailure(e); }
         }, "upload-image").start();
     }
 
     /**
-     * Reads voice bytes from {@code filePath}, encrypts (stub), uploads to Supabase.
+     * Reads voice bytes from {@code filePath}, AES-256-GCM encrypts, uploads.
      * Delivers a storage path via {@code cb.onSuccess}.
      */
     public static void uploadVoice(Context ctx, String filePath, String convId, UploadCallback cb) {
         new Thread(() -> {
             try {
-                java.io.File f = new java.io.File(filePath);
-                byte[] data = readFile(f);
-                data = SupabaseStorageHelper.encryptBeforeUpload(data);
-
-                String path = "media/" + convId + "/voice/" + System.currentTimeMillis() + ".3gp";
-                String storagePath = SupabaseStorageHelper.uploadFile(data, path, "audio/3gpp", cb::onProgress);
-                cb.onSuccess(storagePath);
+                byte[] plain  = readFile(new java.io.File(filePath));
+                SecretKey key = CryptoInitializer.getSharedKey(ctx);
+                byte[] data   = SupabaseStorageHelper.encryptBeforeUpload(plain, key);
+                String path   = "media/" + convId + "/voice/" + System.currentTimeMillis() + ".3gp";
+                String stored = SupabaseStorageHelper.uploadFile(data, path, "audio/3gpp", cb::onProgress);
+                cb.onSuccess(stored);
 
             } catch (Exception e) { cb.onFailure(e); }
         }, "upload-voice").start();

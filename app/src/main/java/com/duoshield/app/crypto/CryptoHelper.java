@@ -32,6 +32,48 @@ public class CryptoHelper {
         return Base64.getEncoder().encodeToString(combined);
     }
 
+    // ── Binary encrypt / decrypt (for media files) ───────────────────────────
+
+    /**
+     * Encrypts raw bytes with AES-256-GCM.
+     * Output: [12-byte random IV | ciphertext + 16-byte auth tag]
+     * Used by SupabaseStorageHelper before every media upload.
+     */
+    public static byte[] encryptBytes(byte[] plainData, SecretKey key) throws Exception {
+        byte[] iv = new byte[IV_SIZE];
+        new SecureRandom().nextBytes(iv);
+        Cipher cipher = Cipher.getInstance(ALGO);
+        cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_SIZE, iv));
+        byte[] cipherText = cipher.doFinal(plainData);
+        byte[] out = new byte[IV_SIZE + cipherText.length];
+        System.arraycopy(iv,         0, out, 0,       IV_SIZE);
+        System.arraycopy(cipherText, 0, out, IV_SIZE, cipherText.length);
+        return out;
+    }
+
+    /**
+     * Decrypts AES-256-GCM ciphertext produced by {@link #encryptBytes}.
+     * Input: [12-byte IV | ciphertext + auth tag]
+     * Throws {@link javax.crypto.AEADBadTagException} if the data is tampered.
+     */
+    public static byte[] decryptBytes(byte[] encrypted, SecretKey key) throws Exception {
+        if (encrypted.length < IV_SIZE + 1) {
+            throw new IllegalArgumentException(
+                    "Encrypted data too short (" + encrypted.length + " bytes)");
+        }
+        byte[] iv = new byte[IV_SIZE];
+        System.arraycopy(encrypted, 0, iv, 0, IV_SIZE);
+        Cipher cipher = Cipher.getInstance(ALGO);
+        cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_SIZE, iv));
+        try {
+            return cipher.doFinal(encrypted, IV_SIZE, encrypted.length - IV_SIZE);
+        } catch (javax.crypto.AEADBadTagException e) {
+            throw new RuntimeException("Media decryption failed: data corrupted or wrong key", e);
+        }
+    }
+
+    // ── String encrypt / decrypt (for chat messages) ──────────────────────────
+
     public static String decrypt(String encrypted, SecretKey key) throws Exception {
         byte[] decoded;
         try {

@@ -432,7 +432,8 @@ public class ChatMediaActivity extends BaseActivity {
         executor.execute(() -> {
             try {
                 byte[] data = readFileBytes(f);
-                data = SupabaseStorageHelper.encryptBeforeUpload(data);
+                data = SupabaseStorageHelper.encryptBeforeUpload(
+                        data, CryptoInitializer.getSharedKey(ChatMediaActivity.this));
                 String storagePath = SupabaseStorageHelper.uploadFile(
                         data, path, "audio/3gpp",
                         pct -> runOnUiThread(() -> uploadProgress.setProgress(pct)));
@@ -536,15 +537,29 @@ public class ChatMediaActivity extends BaseActivity {
 
         String voiceRef = msg.getMediaUrl();
         if (SupabaseStorageHelper.isSupabasePath(voiceRef)) {
-            // Resolve a fresh signed URL just before playback starts
-            SupabaseStorageHelper.resolveSignedUrl(voiceRef, new SupabaseStorageHelper.SignedUrlCallback() {
-                @Override public void onSuccess(String signedUrl) {
-                    // Guard: user may have tapped stop while the URL was resolving
-                    if (msg.getId().equals(currentlyPlayingId)) {
-                        player.play(signedUrl, listener);
+            // Decrypt then write to temp file — MediaPlayer reads local file paths directly
+            javax.crypto.SecretKey vKey = CryptoInitializer.getSharedKey(ChatMediaActivity.this);
+            SupabaseStorageHelper.loadMedia(voiceRef, vKey, new SupabaseStorageHelper.MediaCallback() {
+                @Override public void onLoaded(byte[] plainBytes) {
+                    if (!msg.getId().equals(currentlyPlayingId)) return; // user tapped stop
+                    try {
+                        File tmp = File.createTempFile("voice_", ".3gp", getCacheDir());
+                        try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tmp)) {
+                            fos.write(plainBytes);
+                        }
+                        tmp.deleteOnExit();
+                        player.play(tmp.getAbsolutePath(), listener);
+                    } catch (Exception ex) {
+                        runOnUiThread(() -> {
+                            Toast.makeText(ChatMediaActivity.this,
+                                    "Playback error", Toast.LENGTH_SHORT).show();
+                            currentlyPlayingId = null;
+                            adapter.setPlayingMessageId(null);
+                            playPauseBtn.setImageResource(R.drawable.ic_play_video);
+                        });
                     }
                 }
-                @Override public void onFailure(Exception e) {
+                @Override public void onError(Exception e) {
                     runOnUiThread(() -> {
                         Toast.makeText(ChatMediaActivity.this,
                                 "Couldn't load voice note", Toast.LENGTH_SHORT).show();
@@ -927,7 +942,8 @@ public class ChatMediaActivity extends BaseActivity {
         executor.execute(() -> {
             try {
                 byte[] data = readUriBytes(fileUri);
-                data = SupabaseStorageHelper.encryptBeforeUpload(data);
+                data = SupabaseStorageHelper.encryptBeforeUpload(
+                        data, CryptoInitializer.getSharedKey(ChatMediaActivity.this));
                 String storagePath = SupabaseStorageHelper.uploadFile(
                         data, path, mime,
                         pct -> runOnUiThread(() -> uploadProgress.setProgress(pct)));

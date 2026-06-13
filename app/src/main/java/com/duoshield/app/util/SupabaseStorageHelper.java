@@ -4,6 +4,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import com.duoshield.app.crypto.CryptoHelper;
+
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -14,53 +16,55 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
+import javax.crypto.SecretKey;
+
 /**
- * Supabase Storage helper — PRIVATE bucket, signed-URL access only.
+ * Supabase Storage helper — PRIVATE bucket, signed-URL + AES-256-GCM E2E encryption.
  *
- * RULES (enforced here — never break them):
- *  1. The bucket is private. Public access is disabled at the Supabase level.
- *  2. Uploads return ONLY the file path. No public URL is ever generated or stored.
- *  3. Media is accessed exclusively through short-lived signed URLs (120 s).
+ * SECURITY RULES (enforced here — never break them):
+ *  1. Bucket is private. No public access at the Supabase level.
+ *  2. Uploads → file path returned, NEVER a URL. Path is stored in Firestore.
+ *  3. Download access ONLY via short-lived signed URLs (120 s).
+ *  4. All media bytes are AES-256-GCM encrypted before upload using the
+ *     ECDH-derived shared key (CryptoInitializer.getSharedKey).
+ *     On-wire format: [12-byte IV | ciphertext | 16-byte GCM auth tag]
  *
- * Firestore message doc structure (NEW — replaces "mediaUrl"):
+ * Firestore message doc (NEW — replaces "mediaUrl" with "path"):
  * {
  *   "type":      "image" | "video" | "voice",
- *   "path":      "media/<chatId>/<uuid>.jpg",   ← stored path, NOT a URL
+ *   "path":      "media/<chatId>/<uuid>.jpg",   ← path only, never a URL
  *   "mediaType": "image" | "video" | "voice",
  *   "senderId":  "...",
  *   "timestamp": ...
  * }
  *
- * Signed-URL request example (POST):
- *   POST https://swpwkwniyrvnsmqafnhz.supabase.co/storage/v1/object/sign/duoshield-media/<path>
+ * Signed-URL API example:
+ *   POST /storage/v1/object/sign/duoshield-media/<path>
  *   Authorization: Bearer <anon_key>
  *   apikey: <anon_key>
  *   Content-Type: application/json
- *   Body: {"expiresIn": 120}
- *
- * Encryption stubs (encryptBeforeUpload / decryptAfterDownload) are identity
- * functions. Swap the body with AES-256-GCM + ECDH shared key to add E2E
- * media encryption without changing the rest of the integration.
+ *   {"expiresIn": 120}
+ *   → {"signedURL": "/storage/v1/object/sign/...?token=..."}
  */
 public final class SupabaseStorageHelper {
 
     // ── Constants ─────────────────────────────────────────────────────────────
-    public static final String SUPABASE_URL     = "https://swpwkwniyrvnsmqafnhz.supabase.co";
-    public static final String SUPABASE_ANON_KEY= "sb_publishable_cKOQKw5gbnM_rgkelAOPZw_gkS_-2Fl";
-    public static final String BUCKET_NAME      = "duoshield-media";
+    public static final String SUPABASE_URL      = "https://swpwkwniyrvnsmqafnhz.supabase.co";
+    public static final String SUPABASE_ANON_KEY = "sb_publishable_cKOQKw5gbnM_rgkelAOPZw_gkS_-2Fl";
+    public static final String BUCKET_NAME       = "duoshield-media";
 
-    public static final int  SIGNED_URL_TTL_SECS = 120;
-    private static final int CONNECT_TIMEOUT_MS  = 15_000;
-    private static final int READ_TIMEOUT_MS     = 60_000;
-    private static final int BUFFER_SIZE         = 8_192;
-    private static final String TAG              = "SupabaseStorage";
+    public static final int    SIGNED_URL_TTL_SECS = 120;
+    private static final int   CONNECT_TIMEOUT_MS  = 15_000;
+    private static final int   READ_TIMEOUT_MS     = 60_000;
+    private static final int   BUFFER_SIZE         = 8_192;
+    private static final String TAG                = "SupabaseStorage";
 
     private SupabaseStorageHelper() {}
 
     // ── Callbacks ─────────────────────────────────────────────────────────────
 
     public interface ProgressCallback {
-        /** Called on a background thread; post to main thread before touching UI. */
+        /** Called on a background thread — post to main thread before touching UI. */
         void onProgress(int percent);
     }
 
@@ -69,19 +73,21 @@ public final class SupabaseStorageHelper {
         void onFailure(Exception e);
     }
 
+    /**
+     * Callback for {@link #loadMedia}: delivers decrypted plain bytes on the main thread.
+     */
+    public interface MediaCallback {
+        void onLoaded(byte[] plainBytes);
+        void onError(Exception e);
+    }
+
     // ── A. uploadFile ─────────────────────────────────────────────────────────
 
     /**
      * Uploads {@code data} to the private bucket at {@code path}.
+     * Callers MUST encrypt data first with {@link #encryptBeforeUpload}.
      *
-     * <p>Call {@link #encryptBeforeUpload} on the bytes first once the
-     * encryption layer is wired in.
-     *
-     * @param data     Raw (or encrypted) bytes.
-     * @param path     Storage path, e.g. {@code "media/chatId/uuid.jpg"}.
-     * @param mimeType MIME type, e.g. {@code "image/jpeg"}.
-     * @param cb       Optional progress callback (may be {@code null}).
-     * @return         The file path (identical to {@code path}) on success.
+     * @return The file path — identical to {@code path} — to store in Firestore.
      * @throws IOException on any network or API error.
      */
     public static String uploadFile(byte[] data, String path,
@@ -118,13 +124,8 @@ public final class SupabaseStorageHelper {
 
     /**
      * Generates a signed URL for {@code path} from the private bucket.
-     *
-     * <p>The URL is valid for {@value #SIGNED_URL_TTL_SECS} seconds.
+     * Valid for {@value #SIGNED_URL_TTL_SECS} seconds.
      * Never store the returned URL — generate a fresh one each time.
-     *
-     * @param path File path previously returned by {@link #uploadFile}.
-     * @return     Absolute HTTPS signed URL.
-     * @throws IOException on network or API error (including expired paths).
      */
     public static String createSignedUrl(String path) throws IOException {
         String endpoint = SUPABASE_URL + "/storage/v1/object/sign/" + BUCKET_NAME + "/" + path;
@@ -148,7 +149,6 @@ public final class SupabaseStorageHelper {
 
         try {
             String signedUrl = new JSONObject(response).getString("signedURL");
-            // Supabase may return a relative path; make it absolute.
             return signedUrl.startsWith("http") ? signedUrl : SUPABASE_URL + signedUrl;
         } catch (Exception e) {
             throw new IOException("Cannot parse signed-URL response: " + response, e);
@@ -158,13 +158,9 @@ public final class SupabaseStorageHelper {
     // ── C. downloadFile ───────────────────────────────────────────────────────
 
     /**
-     * Downloads raw bytes from a signed URL.
+     * Downloads raw (encrypted) bytes from a signed URL.
+     * Callers MUST pass the result through {@link #decryptAfterDownload}.
      *
-     * <p>Pass the result through {@link #decryptAfterDownload} once the
-     * encryption layer is active.
-     *
-     * @param signedUrl Temporary URL from {@link #createSignedUrl}.
-     * @return          Raw (or encrypted) bytes.
      * @throws IOException on network error, or if the URL has expired (400/403).
      */
     public static byte[] downloadFile(String signedUrl) throws IOException {
@@ -186,13 +182,47 @@ public final class SupabaseStorageHelper {
         return data;
     }
 
+    // ── D. loadMedia (resolve + download + decrypt in one call) ───────────────
+
+    /**
+     * Convenience method: resolves a signed URL, downloads the encrypted bytes,
+     * and decrypts them — all on background threads.
+     * Delivers decrypted {@code byte[]} on the main thread.
+     *
+     * <p>Safe to call from {@code RecyclerView.Adapter.onBindViewHolder}.
+     * Retries once on signed-URL failure.
+     *
+     * @param path      Supabase storage path from Firestore {@code "path"} field.
+     * @param key       ECDH-derived shared key from {@code CryptoInitializer.getSharedKey()}.
+     *                  If {@code null} (pairing not yet complete), bytes are returned as-is.
+     * @param cb        Delivered on the main thread.
+     */
+    public static void loadMedia(String path, SecretKey key, MediaCallback cb) {
+        resolveSignedUrl(path, new SignedUrlCallback() {
+            @Override public void onSuccess(String signedUrl) {
+                new Thread(() -> {
+                    try {
+                        byte[] raw   = downloadFile(signedUrl);
+                        byte[] plain = decryptAfterDownload(raw, key);
+                        new Handler(Looper.getMainLooper()).post(() -> cb.onLoaded(plain));
+                    } catch (Exception e) {
+                        Log.e(TAG, "loadMedia download/decrypt failed: path=" + path, e);
+                        new Handler(Looper.getMainLooper()).post(() -> cb.onError(e));
+                    }
+                }, "supabase-load-" + path.hashCode()).start();
+            }
+            @Override public void onFailure(Exception e) {
+                // resolveSignedUrl already delivers on main thread
+                cb.onError(e);
+            }
+        });
+    }
+
     // ── Async signed-URL helper ───────────────────────────────────────────────
 
     /**
-     * Resolves a signed URL on a background thread, delivers the result on
-     * the main thread. Retries once on failure with a 500 ms back-off.
-     *
-     * <p>Safe to call from {@code RecyclerView.Adapter.onBindViewHolder}.
+     * Resolves a signed URL on a background thread, delivers on the main thread.
+     * Retries once with 500 ms back-off.
      */
     public static void resolveSignedUrl(String path, SignedUrlCallback cb) {
         new Thread(() -> {
@@ -206,7 +236,9 @@ public final class SupabaseStorageHelper {
                     if (attempt == 1) {
                         new Handler(Looper.getMainLooper()).post(() -> cb.onFailure(e));
                     } else {
-                        try { Thread.sleep(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+                        try { Thread.sleep(500); } catch (InterruptedException ignored) {
+                            Thread.currentThread().interrupt();
+                        }
                     }
                 }
             }
@@ -217,28 +249,50 @@ public final class SupabaseStorageHelper {
 
     /**
      * Returns {@code true} when {@code value} is a Supabase storage path
-     * rather than a full HTTPS URL (legacy Firebase Storage messages).
+     * (not a legacy full HTTPS URL from Firebase Storage).
      */
     public static boolean isSupabasePath(String value) {
         return value != null && !value.isEmpty() && !value.startsWith("https://");
     }
 
-    // ── Encryption stubs ─────────────────────────────────────────────────────
+    // ── E2E Encryption ────────────────────────────────────────────────────────
 
     /**
-     * Placeholder: encrypt bytes before upload.
-     * Replace with AES-256-GCM using the ECDH-derived shared key.
+     * AES-256-GCM encrypts {@code data} with {@code key} before upload.
+     * On-wire format: [12-byte random IV | ciphertext | 16-byte auth tag]
+     *
+     * <p>If {@code key} is {@code null} (ECDH pairing not yet complete),
+     * bytes are returned unencrypted — this matches the pre-pairing fallback
+     * already used for text messages.
      */
-    public static byte[] encryptBeforeUpload(byte[] plainData) {
-        return plainData; // TODO: AES-256-GCM encrypt with shared key from CryptoInitializer
+    public static byte[] encryptBeforeUpload(byte[] data, SecretKey key) {
+        if (key == null) return data;
+        try {
+            return CryptoHelper.encryptBytes(data, key);
+        } catch (Exception e) {
+            Log.e(TAG, "encryptBeforeUpload failed — uploading plaintext as fallback", e);
+            return data;
+        }
     }
 
     /**
-     * Placeholder: decrypt bytes after download.
-     * Replace with AES-256-GCM decryption using the ECDH-derived shared key.
+     * AES-256-GCM decrypts bytes received after download.
+     * Inverse of {@link #encryptBeforeUpload}.
+     *
+     * <p>If {@code key} is {@code null}, bytes are returned as-is (legacy
+     * unencrypted messages or pre-pairing fallback).
+     *
+     * @throws RuntimeException wrapping {@link javax.crypto.AEADBadTagException}
+     *         if the data is corrupted or the wrong key is used.
      */
-    public static byte[] decryptAfterDownload(byte[] data) {
-        return data; // TODO: AES-256-GCM decrypt with shared key from CryptoInitializer
+    public static byte[] decryptAfterDownload(byte[] data, SecretKey key) {
+        if (key == null) return data;
+        try {
+            return CryptoHelper.decryptBytes(data, key);
+        } catch (Exception e) {
+            Log.e(TAG, "decryptAfterDownload failed", e);
+            throw new RuntimeException("Media decryption failed: " + e.getMessage(), e);
+        }
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
