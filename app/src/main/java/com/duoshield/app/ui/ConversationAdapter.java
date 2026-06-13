@@ -43,17 +43,17 @@ public class ConversationAdapter
             @Override public int getOldListSize() { return oldList.size(); }
             @Override public int getNewListSize() { return finalNew.size(); }
             @Override public boolean areItemsTheSame(int o, int n) {
-                String oid = oldList.get(o).getId();
-                String nid = finalNew.get(n).getId();
+                String oid = oldList.get(o).id;
+                String nid = finalNew.get(n).id;
                 return oid != null && oid.equals(nid);
             }
             @Override public boolean areContentsTheSame(int o, int n) {
                 Conversation a = oldList.get(o), b = finalNew.get(n);
-                return safeEquals(a.getLastMessage(), b.getLastMessage())
-                    && a.getLastMessageTs() == b.getLastMessageTs()
-                    && a.getUnreadCount() == b.getUnreadCount()
-                    && a.isOnline() == b.isOnline()
-                    && a.isTyping() == b.isTyping();
+                return safeEquals(a.lastMessage, b.lastMessage)
+                    && a.lastMessageTs == b.lastMessageTs
+                    && a.unreadCount == b.unreadCount
+                    && a.isOnline == b.isOnline
+                    && a.isTyping == b.isTyping;
             }
         });
         items = new ArrayList<>(newList);
@@ -72,26 +72,25 @@ public class ConversationAdapter
         Conversation c = items.get(pos);
 
         // Name
-        String name = c.getPartnerName() != null ? c.getPartnerName() : "Unknown";
+        String name = c.partnerName != null ? c.partnerName : "Unknown";
         h.name.setText(name);
 
         // Timestamp
-        h.time.setText(TimeFormatter.format(c.getLastMessageTs()));
+        h.time.setText(TimeFormatter.format(c.lastMessageTs));
 
         // Preview vs typing
-        if (c.isTyping()) {
+        if (c.isTyping) {
             h.preview.setVisibility(View.GONE);
             h.typing.setVisibility(View.VISIBLE);
         } else {
             h.preview.setVisibility(View.VISIBLE);
             h.typing.setVisibility(View.GONE);
-            String preview = c.getLastMessage();
-            h.preview.setText(preview != null ? preview : "");
+            h.preview.setText(c.lastMessage != null ? c.lastMessage : "");
         }
 
         // Unread badge
-        int unread = c.getUnreadCount();
-        if (unread > 0 && !c.isMuted()) {
+        int unread = c.unreadCount;
+        if (unread > 0 && !c.isMuted) {
             h.badge.setVisibility(View.VISIBLE);
             h.badge.setText(unread > 99 ? "99+" : String.valueOf(unread));
         } else {
@@ -99,10 +98,10 @@ public class ConversationAdapter
         }
 
         // Online dot
-        h.onlineDot.setVisibility(c.isOnline() ? View.VISIBLE : View.GONE);
+        h.onlineDot.setVisibility(c.isOnline ? View.VISIBLE : View.GONE);
 
         // Avatar: photo → initials fallback
-        String avatarUrl = c.getAvatarUrl();
+        String avatarUrl = c.avatarUrl;
         if (avatarUrl != null && !avatarUrl.isEmpty()) {
             h.initial.setVisibility(View.GONE);
             h.avatar.setVisibility(View.VISIBLE);

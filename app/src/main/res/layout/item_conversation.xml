@@ -1,152 +1,125 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    app:cardBackgroundColor="@color/transparent"
-    app:cardElevation="0dp"
-    app:strokeWidth="0dp"
-    android:foreground="?attr/selectableItemBackground"
-    android:clickable="true"
-    android:focusable="true">
+    android:background="?attr/selectableItemBackground"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp">
+
+    <!-- Avatar with online dot overlay -->
+    <FrameLayout
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_marginEnd="14dp">
+
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/iv_avatar"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:scaleType="centerCrop"
+            app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.CircleAvatar"/>
+
+        <!-- Initials fallback shown when no photo -->
+        <TextView
+            android:id="@+id/tv_avatar_initial"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:gravity="center"
+            android:textColor="#FFFFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_avatar_circle"
+            android:visibility="visible"/>
+
+        <!-- Online indicator dot -->
+        <View
+            android:id="@+id/online_dot"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:layout_gravity="bottom|end"
+            android:background="@drawable/bg_online_dot"
+            android:visibility="gone"/>
+    </FrameLayout>
 
     <LinearLayout
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="10dp"
-        android:paddingBottom="10dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
         android:gravity="center_vertical">
 
-        <!-- Avatar container (online ring) -->
-        <FrameLayout
-            android:layout_width="52dp"
-            android:layout_height="52dp">
-
-            <!-- Avatar image -->
-            <com.google.android.material.imageview.ShapeableImageView
-                android:id="@+id/iv_avatar"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_gravity="center"
-                android:scaleType="centerCrop"
-                app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.CircleAvatar"
-                android:background="@color/ds_surface_2"
-                android:contentDescription="avatar" />
-
-            <!-- Online dot -->
-            <View
-                android:id="@+id/vOnlineDot"
-                android:layout_width="12dp"
-                android:layout_height="12dp"
-                android:layout_gravity="bottom|end"
-                android:background="@drawable/bg_online_dot"
-                android:visibility="gone" />
-
-        </FrameLayout>
-
-        <!-- Text content -->
+        <!-- Name row + time -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="8dp">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-            <!-- Name + time row -->
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:id="@+id/tv_name"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:layout_weight="1"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"/>
 
-                <TextView
-                    android:id="@+id/tv_name"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:textColor="@color/ds_text_primary"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:maxLines="1"
-                    android:ellipsize="end"
-                    android:fontFamily="sans-serif-medium" />
-
-                <!-- Lock icon (E2EE indicator) -->
-                <ImageView
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
-                    android:layout_marginStart="4dp"
-                    android:src="@drawable/ic_lock"
-                    app:tint="@color/ds_text_tertiary"
-                    android:contentDescription="encrypted" />
-
-                <TextView
-                    android:id="@+id/tv_time"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
-                    android:textColor="@color/ds_text_timestamp"
-                    android:textSize="12sp" />
-
-            </LinearLayout>
-
-            <!-- Preview + badge row -->
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:id="@+id/tv_time"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="3dp">
-
-                <!-- Status tick for last message -->
-                <ImageView
-                    android:id="@+id/iv_tick"
-                    android:layout_width="16dp"
-                    android:layout_height="16dp"
-                    android:layout_marginEnd="4dp"
-                    android:src="@drawable/ic_done_all"
-                    app:tint="@color/ds_tick_delivered"
-                    android:visibility="gone"
-                    android:contentDescription="status" />
-
-                <TextView
-                    android:id="@+id/tv_preview"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:textColor="@color/ds_text_secondary"
-                    android:textSize="13sp"
-                    android:maxLines="1"
-                    android:ellipsize="end" />
-
-                <!-- Unread badge -->
-                <TextView
-                    android:id="@+id/tv_badge"
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/bg_badge"
-                    android:gravity="center"
-                    android:textColor="@color/ds_badge_text"
-                    android:textSize="11sp"
-                    android:textStyle="bold"
-                    android:visibility="gone" />
-
-            </LinearLayout>
+                android:textColor="@color/text_hint"
+                android:textSize="11sp"
+                android:layout_marginStart="6dp"/>
         </LinearLayout>
+
+        <!-- Preview row + badge -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="3dp"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tv_preview"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:maxLines="1"
+                android:ellipsize="end"/>
+
+            <TextView
+                android:id="@+id/tv_badge"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:background="@drawable/bg_badge"
+                android:gravity="center"
+                android:textColor="@color/badge_text"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:layout_marginStart="6dp"
+                android:visibility="gone"/>
+        </LinearLayout>
+
+        <!-- Typing indicator (replaces preview when partner is typing) -->
+        <TextView
+            android:id="@+id/tv_typing"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="typing…"
+            android:textColor="@color/accent"
+            android:textSize="12sp"
+            android:textStyle="italic"
+            android:layout_marginTop="2dp"
+            android:visibility="gone"/>
     </LinearLayout>
-
-    <!-- Bottom divider -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="0.5dp"
-        android:layout_gravity="bottom"
-        android:layout_marginStart="80dp"
-        android:background="@color/ds_divider" />
-
-</com.google.android.material.card.MaterialCardView>
+</LinearLayout>

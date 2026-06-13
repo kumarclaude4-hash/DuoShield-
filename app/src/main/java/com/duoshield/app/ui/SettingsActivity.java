@@ -212,7 +212,7 @@ public class SettingsActivity extends BaseActivity {
             ? "✓  App PIN is set"
             : "No PIN set — lock screen is disabled");
         tvPinStatus.setTextColor(getResources().getColor(
-            PinManager.hasPinSet(this) ? R.color.online_green : R.color.text_hint, null));
+            PinManager.hasPinSet(this) ? R.color.ds_online : R.color.text_hint, null));
     }
 
     // ── Duress PIN logic ──────────────────────────────────────────────────────
