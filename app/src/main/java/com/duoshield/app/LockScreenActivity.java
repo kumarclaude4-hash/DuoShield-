@@ -1,7 +1,6 @@
 package com.duoshield.app;
 
 import android.content.Intent;
-import android.annotation.SuppressLint;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
@@ -77,27 +76,40 @@ public class LockScreenActivity extends AppCompatActivity {
             return;
         }
 
-        // Duress PIN → silent wipe
-        if (DuressManager.isDuressPin(this, entered)) {
-            DuressManager.triggerDuress(this);
-            return;
-        }
+        // Disable UI while PBKDF2 runs on background thread (310K iterations ≈ 3–8 s)
+        btnUnlock.setEnabled(false);
+        btnBiometric.setEnabled(false);
+        etPin.setEnabled(false);
+        tvError.setText("Verifying…");
+        tvError.setVisibility(View.VISIBLE);
 
-        // Correct app PIN → real unlock
-        if (PinManager.verifyPin(this, entered)) {
-            unlock();
-            return;
-        }
+        new Thread(() -> {
+            // Both calls are PBKDF2 — must NOT run on the UI thread
+            boolean duress  = DuressManager.isDuressPin(this, entered);
+            boolean correct = !duress && PinManager.verifyPin(this, entered);
 
-        // Wrong PIN → shake + open decoy chats (plausible deniability)
-        HapticHelper.wrongPin(this);
-        Animation shake = AnimationUtils.loadAnimation(this, R.anim.shake);
-        etPin.startAnimation(shake);
-        etPin.setText("");
-        tvError.setVisibility(View.GONE);
+            runOnUiThread(() -> {
+                // Re-enable input regardless of outcome
+                btnUnlock.setEnabled(true);
+                btnBiometric.setEnabled(true);
+                etPin.setEnabled(true);
+                tvError.setVisibility(View.GONE);
 
-        // Short delay so the shake finishes before transitioning
-        etPin.postDelayed(() -> openDecoyChats(), 550);
+                if (duress) {
+                    DuressManager.triggerDuress(this);
+                } else if (correct) {
+                    unlock();
+                } else {
+                    // Wrong PIN → shake + open decoy chats (plausible deniability)
+                    HapticHelper.wrongPin(this);
+                    Animation shake = AnimationUtils.loadAnimation(this, R.anim.shake);
+                    etPin.startAnimation(shake);
+                    etPin.setText("");
+                    // Short delay so the shake finishes before transitioning
+                    etPin.postDelayed(() -> openDecoyChats(), 550);
+                }
+            });
+        }).start();
     }
 
     private void unlock() {
@@ -113,7 +125,6 @@ public class LockScreenActivity extends AppCompatActivity {
         finish();
     }
 
-    @SuppressLint("MissingSuperCall")
     @Override public void onBackPressed() {
         // Block back — user must authenticate
     }
