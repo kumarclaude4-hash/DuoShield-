@@ -38,8 +38,11 @@ import com.duoshield.app.ui.SettingsActivity;
 import com.duoshield.app.ui.WaveformView;
 import com.duoshield.app.util.VoiceMessagePlayer;
 import com.duoshield.app.util.VoiceRecorderHelper;
-import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.auth.FirebaseAuth;
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.Signature;
+import java.security.spec.PKCS8EncodedKeySpec;
 import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
@@ -900,13 +903,23 @@ public class ChatMediaActivity extends BaseActivity {
                 JSONObject msgObj = new JSONObject();
                 msgObj.put("token", token); msgObj.put("notification", notification);
                 JSONObject payload = new JSONObject(); payload.put("message", msgObj);
+
+                // Read service account for JWT signing (no google-auth-library needed)
                 InputStream sa = getAssets().open("service-account.json");
-                GoogleCredentials creds = GoogleCredentials.fromStream(sa).createScoped(Arrays.asList(FCM_SCOPE));
-                creds.refreshIfExpired();
+                byte[] saBytes = new byte[sa.available()];
+                //noinspection ResultOfMethodCallIgnored
+                sa.read(saBytes);
+                sa.close();
+                JSONObject saJson = new JSONObject(new String(saBytes, StandardCharsets.UTF_8));
+                String pemKey     = saJson.getString("private_key");
+                String clientEmail = saJson.getString("client_email");
+
+                String accessToken = buildOAuth2Token(pemKey, clientEmail);
+
                 URL url = new URL(FCM_ENDPOINT);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
-                conn.setRequestProperty("Authorization", "Bearer " + creds.getAccessToken().getTokenValue());
+                conn.setRequestProperty("Authorization", "Bearer " + accessToken);
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setDoOutput(true);
                 try (OutputStream os = conn.getOutputStream()) {
@@ -915,5 +928,60 @@ public class ChatMediaActivity extends BaseActivity {
                 Log.d(TAG, "FCM: " + conn.getResponseCode());
             } catch (Exception ex) { Log.w(TAG, "FCM failed", ex); }
         });
+    }
+
+    /**
+     * Builds a short-lived OAuth2 access token for FCM HTTP v1 by manually
+     * signing a JWT with RS256 — no external google-auth library required.
+     * minSdk=26 guarantees {@link java.util.Base64} and {@link java.security.Signature}.
+     */
+    private String buildOAuth2Token(String privateKeyPem, String clientEmail) throws Exception {
+        // Strip PEM envelope and decode to PKCS8 bytes
+        String pem = privateKeyPem
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replaceAll("\\s+", "");
+        byte[] keyBytes = java.util.Base64.getDecoder().decode(pem);
+        PrivateKey privateKey = KeyFactory.getInstance("RSA")
+            .generatePrivate(new PKCS8EncodedKeySpec(keyBytes));
+
+        // Build JWT header.claims (RFC 7519 / Google OAuth2 service-account flow)
+        long now = System.currentTimeMillis() / 1000;
+        String header = java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("{\"alg\":\"RS256\",\"typ\":\"JWT\"}"
+                .getBytes(StandardCharsets.UTF_8));
+        String claims = java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(("{\"iss\":\"" + clientEmail + "\","
+                + "\"scope\":\"" + FCM_SCOPE + "\","
+                + "\"aud\":\"https://oauth2.googleapis.com/token\","
+                + "\"iat\":" + now + ","
+                + "\"exp\":" + (now + 3600) + "}")
+                .getBytes(StandardCharsets.UTF_8));
+        String sigInput = header + "." + claims;
+
+        // Sign with RS256
+        Signature signer = Signature.getInstance("SHA256withRSA");
+        signer.initSign(privateKey);
+        signer.update(sigInput.getBytes(StandardCharsets.UTF_8));
+        String sigB64 = java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(signer.sign());
+
+        String jwt = sigInput + "." + sigB64;
+
+        // Exchange JWT for access token
+        URL tokenUrl = new URL("https://oauth2.googleapis.com/token");
+        HttpURLConnection tc = (HttpURLConnection) tokenUrl.openConnection();
+        tc.setRequestMethod("POST");
+        tc.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+        tc.setDoOutput(true);
+        String form = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer"
+                    + "&assertion=" + jwt;
+        try (OutputStream os = tc.getOutputStream()) {
+            os.write(form.getBytes(StandardCharsets.UTF_8));
+        }
+        byte[] resp = new byte[4096];
+        int read = tc.getInputStream().read(resp);
+        return new JSONObject(new String(resp, 0, read, StandardCharsets.UTF_8))
+            .getString("access_token");
     }
 }

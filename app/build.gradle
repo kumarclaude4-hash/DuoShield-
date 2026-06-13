@@ -86,5 +86,6 @@ dependencies {
     // PhotoView — pinch-zoom for full-screen images
     implementation 'com.github.chrisbanes:PhotoView:2.3.0'
 
-    // Google Auth Library removed — service-account.json removed (#5), FCM handled server-side
+    // Unit tests
+    testImplementation 'junit:junit:4.13.2'
 }
