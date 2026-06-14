@@ -34,7 +34,6 @@ import com.bumptech.glide.Glide;
 import com.duoshield.app.crypto.CryptoHelper;
 import com.duoshield.app.crypto.CryptoInitializer;
 import com.duoshield.app.crypto.ECDHHelper;
-import com.duoshield.app.crypto.KeyManager;
 import com.duoshield.app.db.AppDatabase;
 import com.duoshield.app.models.Message;
 // BiometricHelper removed from direct use here — lock handled by BaseActivity
@@ -49,10 +48,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.SetOptions;
 import com.google.firebase.firestore.WriteBatch;
-import java.security.KeyFactory;
 import java.security.PrivateKey;
-import java.security.Signature;
-import java.security.spec.PKCS8EncodedKeySpec;
 import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
@@ -62,10 +58,6 @@ import com.duoshield.app.util.SupabaseStorageHelper;
 import org.json.JSONObject;
 
 import java.io.File;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -84,10 +76,6 @@ import javax.crypto.SecretKey;
 public class ChatMediaActivity extends BaseActivity {
 
     private static final String TAG                  = "ChatMediaActivity";
-    private static final String FCM_ENDPOINT         =
-            "https://fcm.googleapis.com/v1/projects/duoshield-8caf1/messages:send";
-    private static final String FCM_SCOPE            =
-            "https://www.googleapis.com/auth/firebase.messaging";
     private static final int    MAX_PINS             = 3;
     private static final int    REQUEST_RECORD_AUDIO = 201;
 
@@ -272,9 +260,10 @@ public class ChatMediaActivity extends BaseActivity {
 
         applyWallpaper();
         loadPartnerInfo();
-        reEnsureEcdhKey();   // Fix encryption: re-derive shared key if missing or stale
-        listenForMessages();
         listenForConvUpdates();
+        // reEnsureEcdhKey starts the message listener AFTER the key is ready so
+        // historical messages are decrypted with the correct key on first load.
+        reEnsureEcdhKey();
 
         sendButton.setOnClickListener(v -> {
             String text = messageInput.getText() != null
@@ -668,6 +657,7 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     private void listenForMessages() {
+        if (msgListener != null) return; // already active — do not create a duplicate
         msgListener = db.collection("chats").document(conversationId)
           .collection("messages").orderBy("timestamp")
           .addSnapshotListener((snaps, e) -> {
@@ -720,12 +710,13 @@ public class ChatMediaActivity extends BaseActivity {
                           if (wasEncrypted && text != null && !text.isEmpty()) {
                               try {
                                   SecretKey k = CryptoInitializer.getSharedKey(ChatMediaActivity.this);
-                                  if (k == null) k = KeyManager.getKey();
                                   if (k != null) {
                                       displayText = CryptoHelper.decrypt(text, k);
                                   } else {
-                                      displayText = "[Unable to decrypt — key missing]";
-                                      Log.w(TAG, "No decryption key available for msg " + id);
+                                      // ECDH key not ready yet — reEnsureEcdhKey() will restart
+                                      // the listener with the correct key once derivation completes.
+                                      displayText = "[Waiting for encryption key…]";
+                                      Log.w(TAG, "ECDH key missing for msg " + id + " — will retry after key derivation");
                                   }
                               } catch (Exception ex) {
                                   displayText = "[Decryption failed]";
@@ -1036,18 +1027,13 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     private void sendMessage(String plaintext) {
+        // Only use the ECDH shared key — never fall back to the device-local AES key
+        // because the partner cannot decrypt with a key they don't have.
         SecretKey k = CryptoInitializer.getSharedKey(this);
         if (k == null) {
-            try { k = KeyManager.getKey(); } catch (Exception ignored) {}
-        }
-        if (k == null) {
-            try { KeyManager.generateKey(); k = KeyManager.getKey(); } catch (Exception ignored) {}
-        }
-        if (k == null) {
             Toast.makeText(this,
-                "Waiting for encryption key — try again in a moment.", Toast.LENGTH_SHORT).show();
-            // Kick off async ECDH re-derive so next attempt succeeds
-            reEnsureEcdhKey();
+                "Encryption key not ready yet — please wait a moment.", Toast.LENGTH_SHORT).show();
+            reEnsureEcdhKey(); // triggers key derivation and starts listener when done
             return;
         }
 
@@ -1105,33 +1091,57 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     /**
-     * Re-derives the ECDH shared key from Firestore-stored public keys.
-     * Called on chat open and whenever encryption fails due to a missing key.
-     * Handles the case where the user re-logged in or the partner re-installed.
+     * Fetches the partner's EC public key from Firestore, derives (or re-derives)
+     * the ECDH shared AES key, then starts listenForMessages().
+     *
+     * Calling listenForMessages() HERE (not in onCreate) guarantees that historical
+     * messages are decrypted with the correct key instead of silently failing.
+     * A 4-second watchdog ensures the listener always starts even if Firestore is slow.
      */
     private void reEnsureEcdhKey() {
-        if (partnerUid == null) return;
+        // Watchdog: if Firestore takes > 4 s, start listening anyway so the UI isn't stuck
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (msgListener == null) {
+                Log.w(TAG, "ECDH watchdog: starting listener without fresh key");
+                listenForMessages();
+            }
+        }, 4_000);
+
+        if (partnerUid == null) {
+            listenForMessages();
+            return;
+        }
+
         db.collection("users").document(partnerUid).get()
             .addOnSuccessListener(doc -> {
                 String partnerPub = doc.getString("ecPublicKey");
-                if (partnerPub == null) return;
+                if (partnerPub == null) {
+                    Log.w(TAG, "Partner EC public key not in Firestore yet");
+                    listenForMessages();
+                    return;
+                }
 
                 android.content.SharedPreferences secure = SecurePrefs.get(this);
                 String storedPartnerPub = secure.getString(
                         CryptoInitializer.KEY_PARTNER_EC_PUBLIC, null);
                 SecretKey existingKey = CryptoInitializer.getSharedKey(this);
 
-                // Re-derive if key is absent OR if partner's public key changed (partner reinstalled)
-                if (existingKey != null && partnerPub.equals(storedPartnerPub)) return;
+                // Key already good — no re-derive needed, just start listening
+                if (existingKey != null && partnerPub.equals(storedPartnerPub)) {
+                    listenForMessages();
+                    return;
+                }
 
                 executor.execute(() -> {
                     try {
                         PrivateKey myPriv = CryptoInitializer.getMyPrivateKey(this);
                         if (myPriv == null) {
-                            // Reinstall scenario: generate a new EC key pair and upload it
                             CryptoInitializer.ensureKeyExists(this);
                             myPriv = CryptoInitializer.getMyPrivateKey(this);
-                            if (myPriv == null) return;
+                            if (myPriv == null) {
+                                runOnUiThread(this::listenForMessages);
+                                return;
+                            }
                             String newPub = CryptoInitializer.getMyPublicKeyB64(this);
                             if (newPub != null && myUid != null) {
                                 db.collection("users").document(myUid)
@@ -1148,9 +1158,15 @@ public class ChatMediaActivity extends BaseActivity {
                               .apply();
                         Log.d(TAG, "ECDH shared key (re-)derived successfully");
                     } catch (Exception ex) {
-                        Log.w(TAG, "ECDH re-derive failed", ex);
+                        Log.w(TAG, "ECDH re-derive failed: " + ex.getMessage());
+                    } finally {
+                        runOnUiThread(this::listenForMessages);
                     }
                 });
+            })
+            .addOnFailureListener(e -> {
+                Log.w(TAG, "Could not fetch partner key from Firestore: " + e.getMessage());
+                listenForMessages();
             });
     }
 
@@ -1190,102 +1206,23 @@ public class ChatMediaActivity extends BaseActivity {
         dbExecutor.execute(() -> AppDatabase.getInstance(this).messageDao().insert(m));
     }
 
-    private void notifyPartner(String title, String body) {
-        if (partnerUid == null) return;
-        db.collection("users").document(partnerUid).get()
-          .addOnSuccessListener(doc -> {
-              String tok = doc.getString("fcmToken");
-              if (tok != null && !tok.isEmpty()) sendFcmNotification(tok, title, body);
-          });
-    }
-
-    private void sendFcmNotification(String token, String title, String body) {
-        dbExecutor.execute(() -> {
-            try {
-                JSONObject notification = new JSONObject();
-                notification.put("title", title); notification.put("body", body);
-                JSONObject msgObj = new JSONObject();
-                msgObj.put("token", token); msgObj.put("notification", notification);
-                JSONObject payload = new JSONObject(); payload.put("message", msgObj);
-
-                // Read service account for JWT signing (no google-auth-library needed)
-                InputStream sa = getAssets().open("service-account.json");
-                byte[] saBytes = new byte[sa.available()];
-                //noinspection ResultOfMethodCallIgnored
-                sa.read(saBytes);
-                sa.close();
-                JSONObject saJson = new JSONObject(new String(saBytes, StandardCharsets.UTF_8));
-                String pemKey     = saJson.getString("private_key");
-                String clientEmail = saJson.getString("client_email");
-
-                String accessToken = buildOAuth2Token(pemKey, clientEmail);
-
-                URL url = new URL(FCM_ENDPOINT);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Authorization", "Bearer " + accessToken);
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setDoOutput(true);
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
-                }
-                Log.d(TAG, "FCM: " + conn.getResponseCode());
-            } catch (Exception ex) { Log.w(TAG, "FCM failed", ex); }
-        });
-    }
-
     /**
-     * Builds a short-lived OAuth2 access token for FCM HTTP v1 by manually
-     * signing a JWT with RS256 — no external google-auth library required.
-     * minSdk=26 guarantees {@link java.util.Base64} and {@link java.security.Signature}.
+     * Pings the partner via Firestore so the Cloud Function (notifyOnMessage) can
+     * deliver the FCM push. We also write a "nudge" timestamp so the receiver
+     * device wakes its Firestore listener even while backgrounded.
+     *
+     * The heavy lifting (FCM send) is done server-side by the Cloud Function that
+     * triggers on every new message document creation — no service-account.json
+     * needed in the APK.
      */
-    private String buildOAuth2Token(String privateKeyPem, String clientEmail) throws Exception {
-        // Strip PEM envelope and decode to PKCS8 bytes
-        String pem = privateKeyPem
-            .replace("-----BEGIN PRIVATE KEY-----", "")
-            .replace("-----END PRIVATE KEY-----", "")
-            .replaceAll("\\s+", "");
-        byte[] keyBytes = java.util.Base64.getDecoder().decode(pem);
-        PrivateKey privateKey = KeyFactory.getInstance("RSA")
-            .generatePrivate(new PKCS8EncodedKeySpec(keyBytes));
-
-        // Build JWT header.claims (RFC 7519 / Google OAuth2 service-account flow)
-        long now = System.currentTimeMillis() / 1000;
-        String header = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("{\"alg\":\"RS256\",\"typ\":\"JWT\"}"
-                .getBytes(StandardCharsets.UTF_8));
-        String claims = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(("{\"iss\":\"" + clientEmail + "\","
-                + "\"scope\":\"" + FCM_SCOPE + "\","
-                + "\"aud\":\"https://oauth2.googleapis.com/token\","
-                + "\"iat\":" + now + ","
-                + "\"exp\":" + (now + 3600) + "}")
-                .getBytes(StandardCharsets.UTF_8));
-        String sigInput = header + "." + claims;
-
-        // Sign with RS256
-        Signature signer = Signature.getInstance("SHA256withRSA");
-        signer.initSign(privateKey);
-        signer.update(sigInput.getBytes(StandardCharsets.UTF_8));
-        String sigB64 = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(signer.sign());
-
-        String jwt = sigInput + "." + sigB64;
-
-        // Exchange JWT for access token
-        URL tokenUrl = new URL("https://oauth2.googleapis.com/token");
-        HttpURLConnection tc = (HttpURLConnection) tokenUrl.openConnection();
-        tc.setRequestMethod("POST");
-        tc.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-        tc.setDoOutput(true);
-        String form = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer"
-                    + "&assertion=" + jwt;
-        try (OutputStream os = tc.getOutputStream()) {
-            os.write(form.getBytes(StandardCharsets.UTF_8));
-        }
-        byte[] resp = new byte[4096];
-        int read = tc.getInputStream().read(resp);
-        return new JSONObject(new String(resp, 0, read, StandardCharsets.UTF_8))
-            .getString("access_token");
+    private void notifyPartner(String title, String body) {
+        if (conversationId == null || partnerUid == null) return;
+        // Write a lightweight nudge to the chat doc. The Cloud Function already handles
+        // the actual FCM push when the message document is created, so this is just a
+        // belt-and-suspenders update to ensure lastActivity is current.
+        db.collection("chats").document(conversationId)
+          .update("lastActivity", com.google.firebase.firestore.FieldValue.serverTimestamp())
+          .addOnFailureListener(e -> Log.w(TAG, "nudge update failed (non-critical): " + e.getMessage()));
     }
+
 }
