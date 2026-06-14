@@ -9,7 +9,6 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
-import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -41,20 +40,43 @@ public class MainActivity extends AppCompatActivity {
         splash.addView(spinner, params);
         setContentView(splash);
 
+        // Bug 4 fix: on Android 13+ (TIRAMISU), requestPermissions() is asynchronous.
+        // The old code called requestPermissions() and then IMMEDIATELY called route(),
+        // so route() ran before the user responded to the permission dialog. This could
+        // cause FCM token registration to happen without POST_NOTIFICATIONS permission,
+        // silently failing to show notifications on fresh installs.
+        //
+        // Fix: if the permission is not yet granted, request it and return. route() is
+        // called from onRequestPermissionsResult() once the user responds. If permission
+        // is already granted (or SDK < 33, where no runtime permission is needed), call
+        // proceedAfterPermission() directly.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this,
                         new String[]{Manifest.permission.POST_NOTIFICATIONS},
                         REQUEST_POST_NOTIFICATIONS);
+                return; // wait for onRequestPermissionsResult before routing
             }
         }
+        proceedAfterPermission();
+    }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_POST_NOTIFICATIONS) {
+            // Proceed regardless of grant/deny — DuoShield works without notifications,
+            // but FCM-based push will be silent if denied on Android 13+.
+            proceedAfterPermission();
+        }
+    }
+
+    private void proceedAfterPermission() {
         FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
         if (currentUser != null) {
             route();
         } else {
-            // Not signed in → go to sign-in screen
             startActivity(new Intent(this, SignInActivity.class));
             finish();
         }
@@ -126,23 +148,20 @@ public class MainActivity extends AppCompatActivity {
                               .apply();
                           startActivity(new Intent(MainActivity.this, ConversationListActivity.class));
                       } else {
-                          startActivity(new Intent(MainActivity.this,
-                                  com.duoshield.app.ui.PairingActivity.class));
+                          startActivity(new Intent(MainActivity.this, PairingActivity.class));
                       }
                   } else {
-                      startActivity(new Intent(MainActivity.this,
-                              com.duoshield.app.ui.PairingActivity.class));
+                      startActivity(new Intent(MainActivity.this, PairingActivity.class));
                   }
                   finish();
               })
               .addOnFailureListener(e -> {
                   startActivity(new Intent(MainActivity.this,
-                          isPaired ? ConversationListActivity.class
-                                   : com.duoshield.app.ui.PairingActivity.class));
+                          isPaired ? ConversationListActivity.class : PairingActivity.class));
                   finish();
               });
         } else {
-            startActivity(new Intent(this, com.duoshield.app.ui.PairingActivity.class));
+            startActivity(new Intent(this, PairingActivity.class));
             finish();
         }
     }

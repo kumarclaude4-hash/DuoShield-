@@ -3,9 +3,11 @@ package com.duoshield.app.security;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import com.duoshield.app.db.AppDatabase;
 import com.duoshield.app.ui.PairingActivity;
+import com.duoshield.app.util.SecurePrefs;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 import com.google.firebase.firestore.WriteBatch;
@@ -20,7 +22,13 @@ import javax.crypto.spec.PBEKeySpec;
 
 public class DuressManager {
 
-    private static final String PREF_NAME        = "duoshield_prefs";
+    private static final String TAG             = "DuressManager";
+
+    // Bug 8 fix: duress PIN hash now stored in SecurePrefs (EncryptedSharedPreferences).
+    // Previously stored in plain "duoshield_prefs" — accessible via ADB backup or root.
+    // Storing in SecurePrefs prevents the hash from being extracted and cracked offline,
+    // which would reveal whether a duress PIN is set (undermining plausible-deniability).
+    private static final String PREF_NAME        = "duoshield_prefs"; // kept for triggerDuress read
     private static final String KEY_DURESS_HASH  = "duress_pin_hash";
     private static final int    ITERATIONS       = 310_000;
     private static final int    KEY_LEN          = 256;
@@ -31,21 +39,19 @@ public class DuressManager {
             new SecureRandom().nextBytes(salt);
             byte[] hash = pbkdf2(pin, salt);
             String stored = bytesToHex(salt) + ":" + bytesToHex(hash);
-            context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                   .edit().putString(KEY_DURESS_HASH, stored).apply();
+            SecurePrefs.get(context).edit().putString(KEY_DURESS_HASH, stored).apply();
         } catch (Exception ignored) {}
     }
 
     public static boolean isDuressPin(Context context, String enteredPin) {
-        SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        String stored = prefs.getString(KEY_DURESS_HASH, null);
+        String stored = SecurePrefs.get(context).getString(KEY_DURESS_HASH, null);
         if (stored == null) return false;
         int sep = stored.indexOf(':');
         if (sep < 0) return false;
         try {
-            byte[] salt = hexToBytes(stored.substring(0, sep));
+            byte[] salt     = hexToBytes(stored.substring(0, sep));
             byte[] expected = hexToBytes(stored.substring(sep + 1));
-            byte[] actual = pbkdf2(enteredPin, salt);
+            byte[] actual   = pbkdf2(enteredPin, salt);
             return constantTimeEquals(expected, actual);
         } catch (Exception e) { return false; }
     }
@@ -54,10 +60,27 @@ public class DuressManager {
         SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         String conversationId   = prefs.getString("conversation_id", null);
 
-        // 1. Atomically wipe ALL SharedPreferences FIRST — synchronous commit
+        // Bug 12 fix: wipe EncryptedSharedPreferences FIRST — this destroys the EC
+        // private key and the ECDH shared AES key. Without these keys, any captured
+        // Firestore ciphertext is unreadable. A forensic extraction after a duress
+        // wipe must not recover crypto material.
+        try {
+            SecurePrefs.get(context).edit().clear().commit();
+        } catch (Exception e) {
+            Log.e(TAG, "triggerDuress: failed to clear SecurePrefs", e);
+        }
+
+        // Also delete the Room DB file directly for complete local erasure
+        try {
+            context.deleteDatabase("duoshield_db");
+        } catch (Exception e) {
+            Log.e(TAG, "triggerDuress: failed to delete Room DB", e);
+        }
+
+        // 1. Atomically wipe ALL plain SharedPreferences — synchronous commit
         prefs.edit().clear().commit();
 
-        // 2. Delete Room messages on background thread
+        // 2. Delete Room messages on background thread (belt-and-suspenders after DB file delete)
         Executors.newSingleThreadExecutor().execute(() -> {
             try {
                 AppDatabase.getInstance(context).messageDao().deleteAll(conversationId);

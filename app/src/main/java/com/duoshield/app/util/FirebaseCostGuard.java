@@ -4,6 +4,22 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.widget.Toast;
 
+/**
+ * Bug 13 fix: converted to a per-day singleton so the 80% quota warning fires
+ * reliably even when a new instance is constructed after the threshold is
+ * already crossed.
+ *
+ * Previous behaviour: `warnIfNearing()` compared `wasBelow` (true at construction
+ * time) against `isAtOrAbove` (also at construction time). If the threshold was
+ * already exceeded when the guard was constructed, both flags were computed from
+ * the same `current` value and the condition `wasBelow && isAtOrAbove` could
+ * never be true.
+ *
+ * New behaviour: a persistent `warned_<type>` boolean in SharedPreferences tracks
+ * whether the warning has been shown today. It is reset alongside the counters in
+ * `rolloverIfNeeded()`. This survives multiple instances and survives the process
+ * being killed and relaunched within the same calendar day.
+ */
 public class FirebaseCostGuard {
 
     private static final String PREFS       = "duoshield_cost_guard";
@@ -12,23 +28,38 @@ public class FirebaseCostGuard {
     private static final int    MAX_DELETES = 16_000;
     private static final float  WARN_PCT    = 0.80f;
 
+    private static FirebaseCostGuard instance;
+
     private final SharedPreferences prefs;
     private final String            todayKey;
     private final Context           appContext;
 
-    public FirebaseCostGuard(Context ctx) {
+    private FirebaseCostGuard(Context ctx) {
         appContext = ctx.getApplicationContext();
-        prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        todayKey = String.valueOf(System.currentTimeMillis() / 86_400_000L);
+        prefs      = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        todayKey   = String.valueOf(System.currentTimeMillis() / 86_400_000L);
         rolloverIfNeeded();
+    }
+
+    public static synchronized FirebaseCostGuard getInstance(Context ctx) {
+        if (instance == null) {
+            instance = new FirebaseCostGuard(ctx);
+        } else {
+            // Check for day rollover even on existing instance
+            instance.rolloverIfNeeded();
+        }
+        return instance;
     }
 
     private void rolloverIfNeeded() {
         String stored = prefs.getString("day_key", "");
         if (!stored.equals(todayKey)) {
             prefs.edit()
-                .putString("day_key", todayKey)
-                .putInt("reads", 0).putInt("writes", 0).putInt("deletes", 0)
+                .putString("day_key",        todayKey)
+                .putInt("reads",   0).putInt("writes",   0).putInt("deletes",   0)
+                .putBoolean("warned_reads",   false)
+                .putBoolean("warned_writes",  false)
+                .putBoolean("warned_deletes", false)
                 .apply();
         }
     }
@@ -59,13 +90,20 @@ public class FirebaseCostGuard {
         prefs.edit().putInt(key, prefs.getInt(key, 0) + n).apply();
     }
 
+    /**
+     * Shows the warning toast at most once per day per quota type.
+     * Uses a persistent "warned_<type>" flag so the warning fires correctly
+     * even when a new instance is created after the threshold is already crossed.
+     */
     private void warnIfNearing(String type, int current, int max) {
-        boolean wasBelow = current < (int)(max * WARN_PCT);
-        boolean isAtOrAbove = (current) >= (int)(max * WARN_PCT);
-        if (wasBelow && isAtOrAbove) {
-            android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
-            h.post(() -> Toast.makeText(appContext,
-                "Warning: " + type + " quota at 80% for today", Toast.LENGTH_LONG).show());
+        String warnedKey = "warned_" + type;
+        if (prefs.getBoolean(warnedKey, false)) return;   // already warned today
+        if (current >= (int)(max * WARN_PCT)) {
+            prefs.edit().putBoolean(warnedKey, true).apply();
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                Toast.makeText(appContext,
+                    "Warning: " + type + " quota at 80% for today",
+                    Toast.LENGTH_LONG).show());
         }
     }
 

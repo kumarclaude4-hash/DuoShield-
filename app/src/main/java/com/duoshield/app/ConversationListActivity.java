@@ -189,8 +189,11 @@ public class ConversationListActivity extends BaseActivity {
 
     @Override protected void onStart() {
         super.onStart();
-        AppLockManager.onAppForegrounded(this);
-        // Only register if not already attached (guards against duplicate from onCreate)
+        // Bug 10 fix: removed AppLockManager.onAppForegrounded() call from here.
+        // BaseActivity.onStart() now resets the lock timer for ALL activities in the
+        // else-branch of shouldLock(). Calling it here a second time was redundant and
+        // made ConversationListActivity the only screen that reset the timer correctly —
+        // so any other activity could still trigger the lock on return.
         if (listener == null) listenForConversation();
     }
 

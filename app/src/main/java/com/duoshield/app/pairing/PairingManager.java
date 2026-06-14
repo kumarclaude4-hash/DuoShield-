@@ -5,11 +5,13 @@ import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
+import android.util.Log;
 
 import com.duoshield.app.crypto.CryptoInitializer;
 import com.duoshield.app.crypto.ECDHHelper;
 import com.duoshield.app.util.SecurePrefs;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.SetOptions;
 
@@ -41,10 +43,24 @@ import javax.crypto.SecretKey;
  *  8. SharedPreferences are saved and onPaired() is called.
  *
  * Firestore path: chats/{chatId}/messages/{messageId}
- * (was: conversations/{conversationId}/messages/{messageId})
+ *
+ * Bug 15 fix: when fetchPartnerKeyWithRetry exhausts all retries without
+ * finding the partner's EC public key, pairing is now aborted with
+ * callback.onError() instead of silently calling finalizeConnection() with a
+ * null key. A null key means the ECDH shared secret is never derived, so all
+ * messages would fail to encrypt. The user now sees an actionable error and
+ * can ask their partner to open the app so the key upload completes.
+ *
+ * Bug 18 fix: finalizeConnection() now writes each user's display name to the
+ * shared chats/{chatId} document under the key "partnerName_<uid>", tagged
+ * with the PARTNER's UID so each device can display the other's name without
+ * an extra Firestore read. The name is sourced from Firebase Auth (displayName
+ * or email prefix). Both sides write symmetrically when they pair, so the
+ * conversation list shows real names as soon as pairing completes.
  */
 public class PairingManager {
 
+    private static final String TAG             = "PairingManager";
     private static final String PREFS_NAME      = "duoshield_prefs";
     private static final String KEY_IS_PAIRED   = "is_paired";
     private static final String KEY_CONV_ID     = "conversation_id";
@@ -134,8 +150,15 @@ public class PairingManager {
         final String finalMyPub    = myPubB64;
         final SharedPreferences sp = secure;
 
+        // Bug 18 fix: also write our displayName so partner-side finalizeConnection()
+        // can read it from users/{myUid}.displayName and store it in the chat doc.
+        String displayName = getMyDisplayName();
+        Map<String, Object> myProfile = new HashMap<>();
+        myProfile.put("ecPublicKey",  finalMyPub);
+        myProfile.put("displayName",  displayName);
+
         db.collection("users").document(myUid)
-            .set(Collections.singletonMap("ecPublicKey", finalMyPub), SetOptions.merge())
+            .set(myProfile, SetOptions.merge())
             .addOnSuccessListener(v ->
                 fetchPartnerKeyWithRetry(myUid, partnerUid, sp, callback, KEY_FETCH_RETRIES))
             .addOnFailureListener(e ->
@@ -149,28 +172,40 @@ public class PairingManager {
                                           PairingCallback callback, int retriesLeft) {
         db.collection("users").document(partnerUid).get()
             .addOnSuccessListener(doc -> {
-                String partnerPubB64 = doc.getString("ecPublicKey");
+                String partnerPubB64     = doc.getString("ecPublicKey");
+                String partnerDisplayName = doc.getString("displayName");
                 if (partnerPubB64 != null && !partnerPubB64.isEmpty()) {
-                    finalizeConnection(myUid, partnerUid, partnerPubB64, secure, callback);
+                    finalizeConnection(myUid, partnerUid, partnerPubB64,
+                            partnerDisplayName, secure, callback);
                 } else if (retriesLeft > 0) {
                     new Handler(Looper.getMainLooper()).postDelayed(
                         () -> fetchPartnerKeyWithRetry(
                                 myUid, partnerUid, secure, callback, retriesLeft - 1),
                         KEY_FETCH_DELAY_MS);
                 } else {
-                    // Partner hasn't uploaded their key yet — connect anyway.
-                    // ECDH will complete once both sides are online.
-                    finalizeConnection(myUid, partnerUid, null, secure, callback);
+                    // Bug 15 fix: partner's EC public key was not found after all retries.
+                    // Previously this called finalizeConnection() with null partnerPubB64,
+                    // which silently skipped ECDH derivation. Messages sent in that window
+                    // encrypted with the wrong (or missing) key and were unreadable.
+                    // Now we surface an actionable error: the user's partner must open the
+                    // app so their key upload completes, then the user tries pairing again.
+                    callback.onError(
+                        "Partner is not online yet. Ask them to open DuoShield and try again.");
                 }
             })
-            .addOnFailureListener(e ->
-                finalizeConnection(myUid, partnerUid, null, secure, callback));
+            .addOnFailureListener(e -> {
+                // Bug 15 fix: network failure also surfaces as an explicit error instead of
+                // silently proceeding with a null key.
+                Log.w(TAG, "fetchPartnerKeyWithRetry: Firestore error — " + e.getMessage());
+                callback.onError("Network error while fetching partner's key. Please try again.");
+            });
     }
 
     // ── Steps 4–7 — derive key, compute chatId, write Firestore, save prefs ──
 
     private void finalizeConnection(String myUid, String partnerUid,
                                     String partnerPubB64,
+                                    String partnerDisplayName,
                                     SharedPreferences secure,
                                     PairingCallback callback) {
         // Step 4 — ECDH shared key derivation
@@ -193,8 +228,19 @@ public class PairingManager {
         String chatId = buildChatId(myUid, partnerUid);
 
         // Step 6 — create / merge chats/{chatId}
+        // Bug 18 fix: write partner names so both sides see the correct display
+        // name in the conversation list without an extra Firestore round-trip.
+        //   partnerName_<partnerUid> = myDisplayName
+        //     → read by the PARTNER's device to show MY name
+        //   partnerName_<myUid>      = partnerDisplayName (if known)
+        //     → read by MY device to show PARTNER's name
+        String myDisplayName = getMyDisplayName();
         Map<String, Object> chatDoc = new HashMap<>();
-        chatDoc.put("participants", Arrays.asList(myUid, partnerUid));
+        chatDoc.put("participants",              Arrays.asList(myUid, partnerUid));
+        chatDoc.put("partnerName_" + partnerUid, myDisplayName);
+        if (partnerDisplayName != null && !partnerDisplayName.isEmpty()) {
+            chatDoc.put("partnerName_" + myUid, partnerDisplayName);
+        }
         db.collection("chats").document(chatId)
             .set(chatDoc, SetOptions.merge());
 
@@ -211,6 +257,20 @@ public class PairingManager {
     }
 
     // ── Utility ───────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the current user's display name, falling back to the email prefix,
+     * then to "DuoShield User". Used to populate partnerName fields on pairing.
+     */
+    private String getMyDisplayName() {
+        FirebaseUser me = FirebaseAuth.getInstance().getCurrentUser();
+        if (me == null) return "DuoShield User";
+        String dn    = me.getDisplayName();
+        String email = me.getEmail();
+        if (dn != null && !dn.trim().isEmpty()) return dn.trim();
+        if (email != null && !email.isEmpty())  return email.split("@")[0];
+        return "DuoShield User";
+    }
 
     /**
      * Deterministic SHA-256 chat ID from two Firebase UIDs.

@@ -47,8 +47,10 @@ public interface MessageDao {
     @Query("DELETE FROM messages WHERE id = :messageId")
     void deleteMessage(String messageId);
 
-    @Query("DELETE FROM messages WHERE expiresAt > 0 AND expiresAt < :now")
-    void deleteExpired(long now);
+    // Bug 16 fix: renamed parameter from :now to :currentTime to make the intent
+    // explicit — callers must pass System.currentTimeMillis(), not an age-based cutoff.
+    @Query("DELETE FROM messages WHERE expiresAt > 0 AND expiresAt < :currentTime")
+    void deleteExpired(long currentTime);
 
     @Query("DELETE FROM messages WHERE timestamp < :cutoff")
     void deleteOlderThan(long cutoff);

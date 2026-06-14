@@ -148,6 +148,13 @@ public class ChatMediaActivity extends BaseActivity {
     private ListenerRegistration  msgListener;
     private ListenerRegistration  convListener;
 
+    // Bug 1 & 5 fix: keyPending prevents listenForMessages() from starting before
+    // the ECDH derivation completes. Without this guard the Firestore watchdog (4 s)
+    // could start the listener with the OLD (or absent) AES key; then when derivation
+    // finished the second listenForMessages() call was a no-op (msgListener != null),
+    // leaving historical messages shown with the wrong key indefinitely.
+    private volatile boolean keyPending = false;
+
     private final ActivityResultLauncher<String> pickImageLauncher =
         registerForActivityResult(new ActivityResultContracts.GetContent(),
             uri -> { if (uri != null) uploadMedia(uri, "image"); });
@@ -681,6 +688,10 @@ public class ChatMediaActivity extends BaseActivity {
     }
 
     private void listenForMessages() {
+        // Bug 1 & 5 fix: if ECDH derivation is in-flight, bail out. The executor's
+        // finally block will clear keyPending and call us again once the key is stored
+        // (or the watchdog will clear keyPending and call us if Firestore is too slow).
+        if (keyPending) return;
         if (msgListener != null) return; // already active — do not create a duplicate
         msgListener = db.collection("chats").document(conversationId)
           .collection("messages").orderBy("timestamp")
@@ -1176,29 +1187,58 @@ public class ChatMediaActivity extends BaseActivity {
      * Fetches the partner's EC public key from Firestore, derives (or re-derives)
      * the ECDH shared AES key, then starts listenForMessages().
      *
-     * Calling listenForMessages() HERE (not in onCreate) guarantees that historical
-     * messages are decrypted with the correct key instead of silently failing.
-     * A 4-second watchdog ensures the listener always starts even if Firestore is slow.
+     * Bugs 1 & 5 fix — race between watchdog and ECDH derivation:
+     *   The {@code keyPending} flag prevents {@link #listenForMessages()} from
+     *   running while the background executor is mid-derivation. Without it:
+     *   (a) Watchdog fires at 4 s, starts the listener with the wrong/absent key.
+     *   (b) Executor finishes, calls listenForMessages() — but msgListener != null,
+     *       so the call is a no-op and messages remain undecryptable for this session.
+     *   Fix: set keyPending=true before the executor starts. Watchdog clears it (and
+     *   removes any stale listener) before delegating. Executor's finally block clears
+     *   it too and always removes-then-restarts the listener so the fresh key is used.
+     *
+     * Bug 2 fix — partnerUid null at startup:
+     *   Previously, when partnerUid was null we called listenForMessages() immediately,
+     *   which attached a listener that could never decrypt anything (no partner UID →
+     *   no key). Now we try to reload partnerUid from SharedPreferences; if it is still
+     *   null we show an error Toast and do NOT start the listener.
      */
     private void reEnsureEcdhKey() {
-        // Watchdog: if Firestore takes > 4 s, start listening anyway so the UI isn't stuck
+        // Bug 2 fix: reload partnerUid from prefs before giving up.
+        if (partnerUid == null) {
+            android.content.SharedPreferences prefs =
+                    getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
+            partnerUid = prefs.getString("partner_uid", null);
+            if (partnerUid == null) {
+                Log.e(TAG, "reEnsureEcdhKey: partnerUid is null — cannot derive key or listen");
+                Toast.makeText(this,
+                    "Partner info missing. Please re-pair in Settings.",
+                    Toast.LENGTH_LONG).show();
+                return; // do NOT start the listener — no partner UID, no decryption key
+            }
+        }
+
+        // Mark derivation as in-flight so listenForMessages() defers until we're done.
+        keyPending = true;
+
+        // Watchdog: if Firestore takes > 8 s (doubled from 4 s to reduce false fires),
+        // abandon the pending derivation and start the listener anyway so the UI is usable.
+        // We remove any already-started listener first so the fresh call creates a clean one.
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (msgListener == null) {
-                Log.w(TAG, "ECDH watchdog: starting listener without fresh key");
+            if (keyPending) {
+                Log.w(TAG, "ECDH watchdog: abandoning key derivation, starting listener without fresh key");
+                keyPending = false; // release the guard so listenForMessages() can proceed
+                if (msgListener != null) { msgListener.remove(); msgListener = null; }
                 listenForMessages();
             }
-        }, 4_000);
-
-        if (partnerUid == null) {
-            listenForMessages();
-            return;
-        }
+        }, 8_000);
 
         db.collection("users").document(partnerUid).get()
             .addOnSuccessListener(doc -> {
                 String partnerPub = doc.getString("ecPublicKey");
                 if (partnerPub == null) {
                     Log.w(TAG, "Partner EC public key not in Firestore yet");
+                    keyPending = false;
                     listenForMessages();
                     return;
                 }
@@ -1208,12 +1248,14 @@ public class ChatMediaActivity extends BaseActivity {
                         CryptoInitializer.KEY_PARTNER_EC_PUBLIC, null);
                 SecretKey existingKey = CryptoInitializer.getSharedKey(this);
 
-                // Key already good — no re-derive needed, just start listening
+                // Key already good — no re-derive needed; clear flag and start listening
                 if (existingKey != null && partnerPub.equals(storedPartnerPub)) {
+                    keyPending = false;
                     listenForMessages();
                     return;
                 }
 
+                // Key missing or partner's key changed — derive on background thread
                 executor.execute(() -> {
                     try {
                         PrivateKey myPriv = CryptoInitializer.getMyPrivateKey(this);
@@ -1221,8 +1263,8 @@ public class ChatMediaActivity extends BaseActivity {
                             CryptoInitializer.ensureKeyExists(this);
                             myPriv = CryptoInitializer.getMyPrivateKey(this);
                             if (myPriv == null) {
-                                runOnUiThread(this::listenForMessages);
-                                return;
+                                Log.e(TAG, "Cannot derive ECDH key — own private key unavailable");
+                                return; // finally block handles listener restart
                             }
                             String newPub = CryptoInitializer.getMyPublicKeyB64(this);
                             if (newPub != null && myUid != null) {
@@ -1242,12 +1284,19 @@ public class ChatMediaActivity extends BaseActivity {
                     } catch (Exception ex) {
                         Log.w(TAG, "ECDH re-derive failed: " + ex.getMessage());
                     } finally {
-                        runOnUiThread(this::listenForMessages);
+                        // Bug 1 & 5 fix: clear the flag, THEN remove any watchdog-started
+                        // listener and restart it so the fresh key is guaranteed to be used.
+                        keyPending = false;
+                        runOnUiThread(() -> {
+                            if (msgListener != null) { msgListener.remove(); msgListener = null; }
+                            listenForMessages();
+                        });
                     }
                 });
             })
             .addOnFailureListener(e -> {
                 Log.w(TAG, "Could not fetch partner key from Firestore: " + e.getMessage());
+                keyPending = false;
                 listenForMessages();
             });
     }

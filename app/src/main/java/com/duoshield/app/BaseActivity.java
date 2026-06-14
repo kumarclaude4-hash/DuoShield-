@@ -19,6 +19,12 @@ public class BaseActivity extends AppCompatActivity {
     // Bug A fix: check shouldLock() in onStart() so it runs BEFORE any subclass
     // onStart() override can call onAppForegrounded() and zero-out bgTs.
     // LockScreenActivity extends AppCompatActivity directly and is unaffected.
+    //
+    // Bug 10 fix: reset the lock timer in the else branch so navigating between
+    // activities derived from BaseActivity (Settings, KeyFingerprint, etc.) does not
+    // accumulate background time and trigger a spurious lock on return.
+    // Previously only ConversationListActivity called onAppForegrounded(); any other
+    // screen held an uncorrected bgTs and could trigger the lock after 3 minutes.
     @Override
     protected void onStart() {
         super.onStart();
@@ -26,6 +32,10 @@ public class BaseActivity extends AppCompatActivity {
             Intent intent = new Intent(this, LockScreenActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(intent);
+        } else {
+            // Reset the background timestamp — keeps the 3-minute window anchored to
+            // the last time the user interacted with ANY activity, not just the list.
+            AppLockManager.onAppForegrounded(this);
         }
     }
 

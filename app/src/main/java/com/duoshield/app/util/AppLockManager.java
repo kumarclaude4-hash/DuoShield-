@@ -21,10 +21,22 @@ public class AppLockManager {
            .edit().putLong(KEY_LOCK_TS, 0).apply();
     }
 
+    /**
+     * Bug 9 fix: shouldLock() now only returns true when a PIN is actually set.
+     *
+     * Previously, biometric_enabled alone could trigger shouldLock(), which would
+     * launch LockScreenActivity — but LockScreenActivity immediately finishes() if
+     * no PIN is set (hasPinSet() == false), creating a flash-and-dismiss loop.
+     * Worse, if biometric fails and no PIN is set, the user has no fallback.
+     *
+     * Biometric is an authentication METHOD used inside LockScreenActivity, not an
+     * independent lock trigger. A PIN is always required as the root credential;
+     * biometric just provides a faster path to unlock.
+     */
     public static boolean shouldLock(Context ctx) {
+        // Require PIN — biometric is auth method, not lock trigger (Bug 9 fix)
+        if (!PinManager.hasPinSet(ctx)) return false;
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (!prefs.getBoolean("biometric_enabled", false)
-                && !PinManager.hasPinSet(ctx)) return false;
         long bgTs = prefs.getLong(KEY_LOCK_TS, 0);
         if (bgTs == 0) return false;
         return (System.currentTimeMillis() - bgTs) > LOCK_TIMEOUT;

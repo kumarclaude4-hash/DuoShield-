@@ -1,6 +1,7 @@
 package com.duoshield.app;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
@@ -15,8 +16,20 @@ import com.duoshield.app.security.DuressManager;
 import com.duoshield.app.util.AppLockManager;
 import com.duoshield.app.util.HapticHelper;
 import com.duoshield.app.util.PinManager;
+import com.duoshield.app.util.WipeHelper;
 
 public class LockScreenActivity extends AppCompatActivity {
+
+    // Bug 17 fix: brute-force protection.
+    // Fail counter is stored in plain SharedPreferences (the counter itself is not
+    // sensitive). After PIN_WIPE_THRESHOLD failures the entire app is wiped.
+    // After PIN_BACKOFF_THRESHOLD failures a growing delay is inserted so online
+    // attacks are rate-limited even before the wipe threshold is hit.
+    private static final String PREFS_NAME             = "duoshield_prefs";
+    private static final String KEY_FAIL_COUNT         = "pin_fail_count";
+    private static final int    PIN_BACKOFF_THRESHOLD  = 5;
+    private static final int    PIN_WIPE_THRESHOLD     = 10;
+    private static final long   BACKOFF_DELAY_MS       = 30_000L; // 30 s per excess attempt
 
     private EditText etPin;
     private TextView tvError;
@@ -43,7 +56,7 @@ public class LockScreenActivity extends AppCompatActivity {
         }
 
         // Only show biometric button if enabled and hardware is enrolled
-        boolean bioEnabled = getSharedPreferences("duoshield_prefs", MODE_PRIVATE)
+        boolean bioEnabled = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .getBoolean("biometric_enabled", false);
         if (bioEnabled && BiometricHelper.isAvailable(this)) {
             btnBiometric.setVisibility(View.VISIBLE);
@@ -77,9 +90,7 @@ public class LockScreenActivity extends AppCompatActivity {
         }
 
         // Disable UI while PBKDF2 runs on background thread (310K iterations ≈ 3–8 s)
-        btnUnlock.setEnabled(false);
-        btnBiometric.setEnabled(false);
-        etPin.setEnabled(false);
+        setInputEnabled(false);
         tvError.setText("Verifying…");
         tvError.setVisibility(View.VISIBLE);
 
@@ -89,27 +100,66 @@ public class LockScreenActivity extends AppCompatActivity {
             boolean correct = !duress && PinManager.verifyPin(this, entered);
 
             runOnUiThread(() -> {
-                // Re-enable input regardless of outcome
-                btnUnlock.setEnabled(true);
-                btnBiometric.setEnabled(true);
-                etPin.setEnabled(true);
+                setInputEnabled(true);
                 tvError.setVisibility(View.GONE);
 
                 if (duress) {
                     DuressManager.triggerDuress(this);
                 } else if (correct) {
+                    // Reset fail counter on successful unlock
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .edit().putInt(KEY_FAIL_COUNT, 0).apply();
                     unlock();
                 } else {
-                    // Wrong PIN → shake + open decoy chats (plausible deniability)
-                    HapticHelper.wrongPin(this);
-                    Animation shake = AnimationUtils.loadAnimation(this, R.anim.shake);
-                    etPin.startAnimation(shake);
-                    etPin.setText("");
-                    // Short delay so the shake finishes before transitioning
-                    etPin.postDelayed(() -> openDecoyChats(), 550);
+                    handleWrongPin();
                 }
             });
         }).start();
+    }
+
+    /**
+     * Bug 17 fix: increments the fail counter and enforces rate-limiting.
+     * After PIN_WIPE_THRESHOLD failures the app wipes itself.
+     * After PIN_BACKOFF_THRESHOLD failures a delay is inserted before the user
+     * can try again (exponential via multiplier on the base delay).
+     */
+    private void handleWrongPin() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        int failCount = prefs.getInt(KEY_FAIL_COUNT, 0) + 1;
+        prefs.edit().putInt(KEY_FAIL_COUNT, failCount).apply();
+
+        if (failCount >= PIN_WIPE_THRESHOLD) {
+            // Silent full wipe — same as duress path but triggered by brute-force
+            WipeHelper.wipeAll(this);
+            return;
+        }
+
+        HapticHelper.wrongPin(this);
+        Animation shake = AnimationUtils.loadAnimation(this, R.anim.shake);
+        etPin.startAnimation(shake);
+        etPin.setText("");
+
+        if (failCount > PIN_BACKOFF_THRESHOLD) {
+            // Impose growing delay: each excess attempt adds BACKOFF_DELAY_MS
+            long delay = (failCount - PIN_BACKOFF_THRESHOLD) * BACKOFF_DELAY_MS;
+            setInputEnabled(false);
+            tvError.setText("Too many attempts. Wait " + (delay / 1000) + " s…");
+            tvError.setVisibility(View.VISIBLE);
+            etPin.postDelayed(() -> {
+                setInputEnabled(true);
+                tvError.setVisibility(View.GONE);
+                openDecoyChats();
+            }, delay);
+        } else {
+            // Short delay so the shake finishes before transitioning
+            etPin.postDelayed(this::openDecoyChats, 550);
+        }
+    }
+
+    private void setInputEnabled(boolean enabled) {
+        btnUnlock.setEnabled(enabled);
+        btnBiometric.setEnabled(enabled);
+        etPin.setEnabled(enabled);
     }
 
     private void unlock() {

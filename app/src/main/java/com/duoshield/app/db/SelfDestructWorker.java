@@ -47,9 +47,14 @@ public class SelfDestructWorker extends Worker {
 
         try {
             // 1. Delete from local Room DB (WorkManager thread — safe to call directly)
+            // Bug 16 fix: pass 'now' (not 'cutoff') to deleteExpired(). The DAO query is
+            // "WHERE expiresAt > 0 AND expiresAt < :currentTime" — it expects the current
+            // time so that all messages whose absolute expiry deadline has passed are deleted.
+            // Passing 'cutoff' (= now - ttlMinutes) would miss messages that expired
+            // within the last ttlMinutes window.
             AppDatabase db = AppDatabase.getInstance(getApplicationContext());
-            db.messageDao().deleteExpired(cutoff);
-            Log.d(TAG, "Room: deleted messages older than " + cutoff);
+            db.messageDao().deleteExpired(now);
+            Log.d(TAG, "Room: deleted messages with expiresAt < " + now);
 
             // 2. Delete from Firestore in batches
             deleteFromFirestore(conversationId, now);
