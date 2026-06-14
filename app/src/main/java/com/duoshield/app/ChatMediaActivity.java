@@ -726,22 +726,33 @@ public class ChatMediaActivity extends BaseActivity {
                       if (serverTs != null) ts = serverTs.toDate().getTime();
 
                       if (id != null) {
-                          // If already in local list (optimistic entry), just update its status
+                          // If already in local list, update status — BUT re-attempt decryption
+                          // if the stored text is a placeholder ("[Decryption failed]" or
+                          // "[Waiting for encryption key…]"). These stale entries must be
+                          // retried whenever the listener re-delivers the document.
                           boolean exists = false;
+                          boolean isPlaceholder = false;
                           for (Message m : adapter.getMessages()) {
                               if (id.equals(m.getId())) {
                                   exists = true;
-                                  // Update status from Firestore (e.g. "pending" → "sent")
-                                  String fsStatus = dc.getDocument().getString("status");
-                                  if (fsStatus != null) {
-                                      adapter.updateMessage(id, msg -> msg.setStatus(fsStatus));
-                                  } else if ("pending".equals(m.getStatus())) {
-                                      adapter.updateMessage(id, msg -> msg.setStatus("sent"));
+                                  String stored = m.getText();
+                                  isPlaceholder = "[Decryption failed]".equals(stored)
+                                               || "[Waiting for encryption key…]".equals(stored);
+                                  if (!isPlaceholder) {
+                                      // Normal case — just sync status tick
+                                      String fsStatus = dc.getDocument().getString("status");
+                                      if (fsStatus != null) {
+                                          adapter.updateMessage(id, msg -> msg.setStatus(fsStatus));
+                                      } else if ("pending".equals(m.getStatus())) {
+                                          adapter.updateMessage(id, msg -> msg.setStatus("sent"));
+                                      }
                                   }
                                   break;
                               }
                           }
-                          if (exists) continue;
+                          // Skip messages that are already decrypted correctly.
+                          // Messages with placeholder text fall through so we re-attempt below.
+                          if (exists && !isPlaceholder) continue;
 
                           Boolean isEncFlag = dc.getDocument().getBoolean("isEncrypted");
                           boolean wasEncrypted = Boolean.TRUE.equals(isEncFlag);
@@ -773,10 +784,21 @@ public class ChatMediaActivity extends BaseActivity {
                                       shouldPersist = false; // show placeholder; Room write deferred
                                   }
                               } catch (Exception ex) {
-                                  // §3.4 fix: do not persist "[Decryption failed]" to Room.
+                                  // Queue raw ciphertext for retry when the correct key arrives.
+                                  // This handles the watchdog-fired-too-early case where the
+                                  // listener started with a stale key from SecurePrefs. Once
+                                  // reEnsureEcdhKey() derives the correct key, retryPendingDecryption()
+                                  // will find this message in the queue and update the adapter.
+                                  Message pending = new Message(id, convo, from, text, ts, true, mUrl, mType);
+                                  if (rpId != null) pending.setReplyToId(rpId);
+                                  if (rpPrv != null) pending.setReplyPreview(rpPrv);
+                                  if (expAt != null) pending.setExpiresAt(expAt);
+                                  String fsStatusQ = dc.getDocument().getString("status");
+                                  if (fsStatusQ != null) pending.setStatus(fsStatusQ);
+                                  pendingDecryptQueue.add(pending);
                                   displayText = "[Decryption failed]";
                                   shouldPersist = false;
-                                  Log.w(TAG, "Decrypt failed for msg " + id, ex);
+                                  Log.w(TAG, "Decrypt failed for msg " + id + " — queued for retry", ex);
                               }
                           }
 
@@ -792,12 +814,22 @@ public class ChatMediaActivity extends BaseActivity {
                           if (statusFromFs != null) m.setStatus(statusFromFs);
                           if (isExpired(m)) continue;
 
-                          adapter.appendMessage(m);
+                          if (isPlaceholder) {
+                              // Message already in adapter as "[Decryption failed]" or
+                              // "[Waiting for encryption key…]" — replace it in-place.
+                              final Message finalM = m;
+                              adapter.updateMessage(id, existing -> {
+                                  existing.setText(finalM.getText());
+                                  existing.setEncrypted(false);
+                                  if (finalM.getStatus() != null) existing.setStatus(finalM.getStatus());
+                              });
+                          } else {
+                              adapter.appendMessage(m);
+                              newMessageAdded = true;
+                              // Track incoming partner messages for delivery receipt
+                              if (!myUid.equals(from)) newIncoming.add(m);
+                          }
                           if (shouldPersist) saveToRoom(m);
-                          newMessageAdded = true;
-
-                          // Track incoming partner messages for delivery receipt
-                          if (!myUid.equals(from)) newIncoming.add(m);
                       }
 
                   } else if (dc.getType() == DocumentChange.Type.MODIFIED) {
@@ -1251,6 +1283,7 @@ public class ChatMediaActivity extends BaseActivity {
                 keyPending = false; // release the guard so listenForMessages() can proceed
                 if (msgListener != null) { msgListener.remove(); msgListener = null; }
                 listenForMessages();
+                retryPendingDecryption(); // attempt decryption with whatever key is currently stored
             }
         }, 8_000);
 
@@ -1261,6 +1294,7 @@ public class ChatMediaActivity extends BaseActivity {
                     Log.w(TAG, "Partner EC public key not in Firestore yet");
                     keyPending = false;
                     listenForMessages();
+                    retryPendingDecryption(); // try existing key for any queued messages
                     return;
                 }
 
@@ -1321,6 +1355,7 @@ public class ChatMediaActivity extends BaseActivity {
                 Log.w(TAG, "Could not fetch partner key from Firestore: " + e.getMessage());
                 keyPending = false;
                 listenForMessages();
+                retryPendingDecryption(); // try existing key for any queued messages
             });
     }
 
