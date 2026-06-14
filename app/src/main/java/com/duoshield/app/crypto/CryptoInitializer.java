@@ -25,15 +25,11 @@ public class CryptoInitializer {
     public static final String KEY_PARTNER_EC_PUBLIC = "partner_ec_public_key";
 
     public static void ensureKeyExists(Context context) {
-        // 1. AES key (AndroidKeyStore)
-        try {
-            SecretKey key = KeyManager.getKey();
-            if (key == null) KeyManager.generateKey();
-        } catch (Exception e) {
-            try { KeyManager.generateKey(); } catch (Exception ignored) {}
-        }
+        // §3.6 fix: legacy AndroidKeyStore AES key ("duoshield_key") is no longer used
+        // anywhere in the encrypt/decrypt path (Bug 14 fix removed its last caller in
+        // EncryptionHelper). Generating it here was dead work — removed.
 
-        // 2. EC key pair (EncryptedSharedPrefs)
+        // EC key pair (EncryptedSharedPrefs)
         SharedPreferences prefs = SecurePrefs.get(context);
         String pubB64  = prefs.getString(KEY_EC_PUBLIC, null);
         String privB64 = prefs.getString(KEY_EC_PRIVATE, null);
@@ -53,15 +49,17 @@ public class CryptoInitializer {
     }
 
     public static void ensureKeyExists() {
-        try {
-            SecretKey key = KeyManager.getKey();
-            if (key == null) KeyManager.generateKey();
-        } catch (Exception e) {
-            try { KeyManager.generateKey(); } catch (Exception ignored) {}
-        }
+        // §3.6 fix: legacy AES key generation removed — see ensureKeyExists(Context) above.
     }
 
     public static PrivateKey getMyPrivateKey(Context context) {
+        // §3.3 fix: if EncryptedSharedPreferences failed to initialise, treat key as absent
+        // rather than silently reading (potentially plaintext) data from the fallback store.
+        if (!SecurePrefs.isAvailable()) {
+            android.util.Log.e("CryptoInitializer",
+                "getMyPrivateKey: SecurePrefs not encrypted — returning null to force re-pairing.");
+            return null;
+        }
         SharedPreferences prefs = SecurePrefs.get(context);
         String privB64 = prefs.getString(KEY_EC_PRIVATE, null);
         if (privB64 == null) return null;
@@ -75,6 +73,12 @@ public class CryptoInitializer {
     }
 
     public static SecretKey getSharedKey(Context context) {
+        // §3.3 fix: treat crypto material as absent if storage is not encrypted.
+        if (!SecurePrefs.isAvailable()) {
+            android.util.Log.e("CryptoInitializer",
+                "getSharedKey: SecurePrefs not encrypted — returning null to force re-pairing.");
+            return null;
+        }
         SharedPreferences prefs = SecurePrefs.get(context);
         String b64 = prefs.getString(KEY_SHARED_AES, null);
         if (b64 == null) return null;

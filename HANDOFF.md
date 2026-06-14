@@ -294,6 +294,42 @@ Implemented in `MessageStatusHelper.bind(tickIcon, msg, myUid)`.
 ### Screenshots enabled
 - Removed `FLAG_SECURE` from `BaseActivity`, `LockScreenActivity`, and `SignInActivity`
 
+### Codebase analysis fixes (§3.1 – §3.8 from external audit)
+
+**§3.1 — MessageBuilder hardened (HIGH)**
+- Added missing `"id"` field to Firestore document — listenForMessages() was silently skipping all messages sent via MessageBuilder (notification replies, forwarded messages) because it gates on `id != null`
+- Centralized "no key → abort" check inside `MessageBuilder.sendTextMessage()` — if ECDH key is null or `CryptoHelper.encrypt()` returns null, the message is NOT sent rather than sent as plaintext. ForwardMessageHelper and MessageReplyReceiver now both get this protection automatically.
+
+**§3.3 — SecurePrefs silent plaintext fallback removed (HIGH)**
+- `SecurePrefs.get()` now caches its result (thread-safe singleton) and tracks `initialized` + `encryptionAvailable` flags
+- On `EncryptedSharedPreferences` failure, logs prominently and sets `encryptionAvailable = false`; plaintext fallback retained to keep app alive but crypto material is treated as absent
+- Added `SecurePrefs.isAvailable()` method; `SecurePrefs.reset()` for WipeHelper
+- `CryptoInitializer.getSharedKey()` and `getMyPrivateKey()` now return `null` if `!SecurePrefs.isAvailable()`, forcing re-pairing instead of silently reading plaintext-stored key material
+
+**§3.4 — Placeholder strings no longer persisted to Room (HIGH — root cause of "decryption keeps failing")**
+- Added `pendingDecryptQueue` (`List<Message>`) to `ChatMediaActivity` — stores messages with raw ciphertext (isEncrypted=true) that arrive before the ECDH key is ready
+- When key is null at receive time: placeholder shown in UI, raw ciphertext queued, NO Room write
+- Added `retryPendingDecryption()` — called from all success paths in `reEnsureEcdhKey()` — decrypts queued messages, updates adapter in-place, and saves properly-decrypted Message to Room
+- `[Decryption failed]` messages also suppressed from Room (shouldPersist = false)
+
+**§3.5 — Decoy flow backoff no longer self-reveals (LOW/MEDIUM)**
+- `handleWrongPin()`: replaced `"Too many attempts. Wait N s…"` countdown with generic `"Incorrect PIN"` message; delay still applied silently so backoff logic is invisible to attacker
+
+**§3.6 — Dead legacy AES key removed (LOW)**
+- `CryptoInitializer.ensureKeyExists()` and `ensureKeyExists(Context)` no longer generate the AndroidKeyStore AES-256-GCM key (`duoshield_key`) — it was orphaned by the Bug 14 fix (EncryptionHelper now ECDH-only) and only added an unused Keystore entry per install
+
+**§3.7 — Repeating date headers fixed (MEDIUM)**
+- `MessageAdapter.rebuildDisplay()`: replaced `DateHeaderHelper.getLabel()`-based placement with `DateHeaderHelper.needsHeader(prevTs, currentTs)` — which compares two absolute timestamps (not relative to "now") — to decide where headers go; `getLabel()` still used only for formatting the header text. Fixes the "Today/Yesterday/Today/Yesterday…" bug that appeared whenever the adapter was refreshed after midnight.
+
+**§3.8 — Stale "Partner" name backfill (LOW)**
+- `ConversationListActivity.listenForConversation()`: when `partnerName_<myUid>` is missing from the chat doc (pre-fix pairs), now reads `users/{partnerUid}.displayName` and writes it back so subsequent snapshots show the real name
+
+**§3.2 — URGENT ops action required (cannot be done in code)**
+- The Firebase API key `AIzaSyB80HYbZqkgBgGTp9TUkQkJLFrAAfgquhY` (project `duoshield-8caf1`) was present in the exported archive
+- **Action: Rotate this key immediately** in Google Cloud Console → APIs & Services → Credentials → restrict or regenerate the Android API key
+- Purge `app/google-services.json` from git history if it was ever committed (use `git filter-repo` or BFG Repo Cleaner), then re-add only the `.template`
+- Verify Firestore security rules enforce `request.auth != null` and per-chat access
+
 ---
 
 ## To Continue Building on Another Account

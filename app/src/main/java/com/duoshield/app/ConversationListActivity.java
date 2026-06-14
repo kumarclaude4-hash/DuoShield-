@@ -123,7 +123,25 @@ public class ConversationListActivity extends BaseActivity {
                 conv.partnerUid  = partnerUid;
 
                 Object pName = snap.get("partnerName_" + myUid);
-                conv.partnerName = pName != null ? pName.toString() : "Partner";
+                if (pName != null && !pName.toString().isEmpty()) {
+                    conv.partnerName = pName.toString();
+                } else {
+                    // §3.8 fix: backfill partnerName for pairs established before Bug 18 fix shipped.
+                    // finalizeConnection() now writes this field for new pairs, but existing pairs
+                    // whose chat docs pre-date the fix have no partnerName_<uid> field.
+                    conv.partnerName = "Partner"; // shown immediately; replaced by Firestore read below
+                    if (!partnerUid.isEmpty()) {
+                        db.collection("users").document(partnerUid).get()
+                            .addOnSuccessListener(userSnap -> {
+                                String displayName = userSnap.getString("displayName");
+                                if (displayName != null && !displayName.isEmpty()) {
+                                    // Write back so the field is populated for future snapshots
+                                    db.collection("chats").document(conversationId)
+                                        .update("partnerName_" + myUid, displayName);
+                                }
+                            });
+                    }
+                }
 
                 Object last = snap.get("lastMessage");
                 if (last != null && !last.toString().isEmpty()) {

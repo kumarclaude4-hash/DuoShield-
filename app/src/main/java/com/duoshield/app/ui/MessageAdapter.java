@@ -109,13 +109,22 @@ public class MessageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
     public List<Message> getMessages() { return messages; }
 
     private void rebuildDisplay() {
+        // §3.7 fix: the old approach called DateHeaderHelper.getLabel() (a "now"-relative
+        // function) to both DECIDE whether to insert a header and to FORMAT its text.
+        // Because getLabel() returns "Today"/"Yesterday" relative to the current clock,
+        // any rebuildDisplay() call that crosses midnight recomputed every message's label
+        // against a different "now", producing repeating "Today / Yesterday / Today / …"
+        // headers whenever the adapter was refreshed after midnight.
+        //
+        // Fix: use DateHeaderHelper.needsHeader(prevTs, currentTs) — which compares two
+        // absolute timestamps against each other (not against "now") — to DECIDE placement,
+        // and use getLabel() only to FORMAT the text of a header that has already been placed.
         displayItems.clear();
-        String lastDate = null;
+        long lastTimestamp = -1;
         for (Message m : messages) {
-            String label = DateHeaderHelper.getLabel(m.getTimestamp());
-            if (!label.equals(lastDate)) {
-                displayItems.add(label);
-                lastDate = label;
+            if (DateHeaderHelper.needsHeader(lastTimestamp, m.getTimestamp())) {
+                displayItems.add(DateHeaderHelper.getLabel(m.getTimestamp()));
+                lastTimestamp = m.getTimestamp();
             }
             displayItems.add(m);
         }

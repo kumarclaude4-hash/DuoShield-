@@ -1,5 +1,8 @@
-- [DuoShield architecture rules](duoshield-rules.md) — strict rules every agent must follow: FLAG_SECURE, FirebaseCostGuard, one listener/screen, DiffUtil, no Cloud Functions, Room v7
+- [DuoShield architecture rules](duoshield-rules.md) — strict rules every agent must follow: FirebaseCostGuard singleton, one listener/screen, DiffUtil, no Cloud Functions, Room v7 (FLAG_SECURE removed by user request)
 - [DuoShield secrets leak](duoshield-secrets-leak.md) — Replit env vars write to .replit (tracked by git); always use Secrets tab (lock icon) for tokens
 - [DuoShield key storage](duoshield-key-storage.md) — EC key pair + ECDH shared key live in EncryptedSharedPreferences via SecurePrefs; partner EC pub key stored as KEY_PARTNER_EC_PUBLIC
 - [DuoShield PBKDF2 format](duoshield-pbkdf2-format.md) — PIN hashes stored as "hexSalt:hexHash" (PBKDF2WithHmacSHA256, 310k iters); old plain-hex format has no migration path
 - [DuoShield ConversationMetaUpdater](duoshield-conv-meta.md) — update() takes Context as first param; callers (MessageBuilder, ChatMediaActivity) must pass ctx
+- [DuoShield pending decrypt queue](duoshield-pending-decrypt.md) — ChatMediaActivity.pendingDecryptQueue holds raw ciphertext messages that arrived before ECDH key ready; retryPendingDecryption() called from all reEnsureEcdhKey() success paths
+- [DuoShield MessageBuilder id fix](duoshield-messagebuilder.md) — MessageBuilder must always put "id" in the Firestore doc; listenForMessages() silently skips docs where id==null
+- [DuoShield SecurePrefs singleton](duoshield-secureprefs.md) — SecurePrefs.get() is now a cached singleton; isAvailable() returns false if EncryptedSharedPreferences init failed; CryptoInitializer key getters return null when !isAvailable()

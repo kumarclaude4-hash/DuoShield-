@@ -20,20 +20,26 @@ public class MessageBuilder {
                                        String replyToId, String replyPreview) {
         Executors.newSingleThreadExecutor().execute(() -> {
             try {
+                // §3.1 fix: centralize "no key → abort" here so every caller (MessageReplyReceiver,
+                // ForwardMessageHelper, etc.) gets the protection automatically. Never send plaintext.
                 SecretKey key = CryptoInitializer.getSharedKey(ctx);
-                String encrypted = text;
-                boolean enc = false;
-                if (key != null) {
-                    encrypted = CryptoHelper.encrypt(text, key);
-                    enc = true;
+                if (key == null) {
+                    android.util.Log.w("MessageBuilder",
+                        "sendTextMessage: ECDH shared key unavailable — message NOT sent to prevent plaintext leak.");
+                    return;
+                }
+
+                String encrypted = CryptoHelper.encrypt(text, key);
+                if (encrypted == null) {
+                    android.util.Log.w("MessageBuilder",
+                        "sendTextMessage: encryption returned null — message NOT sent.");
+                    return;
                 }
 
                 String encryptedReplyPreview = null;
-                if (replyPreview != null && key != null) {
+                if (replyPreview != null) {
                     try { encryptedReplyPreview = CryptoHelper.encrypt(replyPreview, key); }
-                    catch (Exception ignored) { encryptedReplyPreview = replyPreview; }
-                } else {
-                    encryptedReplyPreview = replyPreview;
+                    catch (Exception ignored) { encryptedReplyPreview = null; }
                 }
 
                 String msgId = UUID.randomUUID().toString();
@@ -49,15 +55,17 @@ public class MessageBuilder {
                 AppDatabase.getInstance(ctx).messageDao().insert(local);
 
                 Map<String, Object> doc = new HashMap<>();
-                doc.put("sender",    myUid);
-                doc.put("text",      encrypted);
-                doc.put("type",      "text");
-                doc.put("timestamp", FieldValue.serverTimestamp());
-                doc.put("status",    "sent");
-                doc.put("isEncrypted", enc);
+                // §3.1 fix: "id" field was missing — listenForMessages() skips docs with null id.
+                doc.put("id",          msgId);
+                doc.put("sender",      myUid);
+                doc.put("text",        encrypted);
+                doc.put("type",        "text");
+                doc.put("timestamp",   FieldValue.serverTimestamp());
+                doc.put("status",      "sent");
+                doc.put("isEncrypted", true);
                 if (replyToId != null) {
-                    doc.put("replyToId",      replyToId);
-                    doc.put("replyPreview",   encryptedReplyPreview != null ? encryptedReplyPreview : "");
+                    doc.put("replyToId",    replyToId);
+                    doc.put("replyPreview", encryptedReplyPreview != null ? encryptedReplyPreview : "");
                 }
 
                 FirebaseFirestore.getInstance()
@@ -70,7 +78,9 @@ public class MessageBuilder {
                             text.length() > 80 ? text.substring(0, 80) : text);
                     });
 
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                android.util.Log.e("MessageBuilder", "sendTextMessage failed", e);
+            }
         });
     }
 }

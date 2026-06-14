@@ -155,6 +155,11 @@ public class ChatMediaActivity extends BaseActivity {
     // leaving historical messages shown with the wrong key indefinitely.
     private volatile boolean keyPending = false;
 
+    // §3.4 fix: messages that arrive before the ECDH shared key is ready are kept here
+    // (raw ciphertext, isEncrypted=true) until retryPendingDecryption() is called once
+    // key derivation completes. Shown as placeholders in the UI but NOT saved to Room.
+    private final List<Message> pendingDecryptQueue = new ArrayList<>();
+
     private final ActivityResultLauncher<String> pickImageLauncher =
         registerForActivityResult(new ActivityResultContracts.GetContent(),
             uri -> { if (uri != null) uploadMedia(uri, "image"); });
@@ -742,19 +747,35 @@ public class ChatMediaActivity extends BaseActivity {
                           boolean wasEncrypted = Boolean.TRUE.equals(isEncFlag);
 
                           String displayText = text;
+                          // §3.4 fix: track whether this message can be safely persisted to Room.
+                          // Placeholder text must NOT be saved — doing so causes the "[Waiting…]" /
+                          // "[Decryption failed]" strings to persist permanently and never be replaced.
+                          boolean shouldPersist = true;
+
                           if (wasEncrypted && text != null && !text.isEmpty()) {
                               try {
                                   SecretKey k = CryptoInitializer.getSharedKey(ChatMediaActivity.this);
                                   if (k != null) {
                                       displayText = CryptoHelper.decrypt(text, k);
                                   } else {
-                                      // ECDH key not ready yet — reEnsureEcdhKey() will restart
-                                      // the listener with the correct key once derivation completes.
+                                      // ECDH key not ready yet — queue for retry after derivation.
+                                      // §3.4 fix: store raw ciphertext in pendingDecryptQueue so
+                                      // retryPendingDecryption() can decrypt once the key arrives.
+                                      Log.w(TAG, "ECDH key missing for msg " + id + " — queued for retry");
+                                      Message pending = new Message(id, convo, from, text, ts, true, mUrl, mType);
+                                      if (rpId != null) pending.setReplyToId(rpId);
+                                      if (rpPrv != null) pending.setReplyPreview(rpPrv);
+                                      if (expAt != null) pending.setExpiresAt(expAt);
+                                      String fsStatus = dc.getDocument().getString("status");
+                                      if (fsStatus != null) pending.setStatus(fsStatus);
+                                      pendingDecryptQueue.add(pending);
                                       displayText = "[Waiting for encryption key…]";
-                                      Log.w(TAG, "ECDH key missing for msg " + id + " — will retry after key derivation");
+                                      shouldPersist = false; // show placeholder; Room write deferred
                                   }
                               } catch (Exception ex) {
+                                  // §3.4 fix: do not persist "[Decryption failed]" to Room.
                                   displayText = "[Decryption failed]";
+                                  shouldPersist = false;
                                   Log.w(TAG, "Decrypt failed for msg " + id, ex);
                               }
                           }
@@ -772,7 +793,7 @@ public class ChatMediaActivity extends BaseActivity {
                           if (isExpired(m)) continue;
 
                           adapter.appendMessage(m);
-                          saveToRoom(m);
+                          if (shouldPersist) saveToRoom(m);
                           newMessageAdded = true;
 
                           // Track incoming partner messages for delivery receipt
@@ -1252,6 +1273,7 @@ public class ChatMediaActivity extends BaseActivity {
                 if (existingKey != null && partnerPub.equals(storedPartnerPub)) {
                     keyPending = false;
                     listenForMessages();
+                    retryPendingDecryption(); // §3.4: decrypt any messages that arrived before key was ready
                     return;
                 }
 
@@ -1290,6 +1312,7 @@ public class ChatMediaActivity extends BaseActivity {
                         runOnUiThread(() -> {
                             if (msgListener != null) { msgListener.remove(); msgListener = null; }
                             listenForMessages();
+                            retryPendingDecryption(); // §3.4: decrypt queued messages with the new key
                         });
                     }
                 });
@@ -1358,6 +1381,53 @@ public class ChatMediaActivity extends BaseActivity {
         db.collection("chats").document(conversationId)
           .update("lastActivity", com.google.firebase.firestore.FieldValue.serverTimestamp())
           .addOnFailureListener(e -> Log.w(TAG, "nudge update failed (non-critical): " + e.getMessage()));
+    }
+
+    /**
+     * §3.4 fix: retry decryption for all messages that arrived before the ECDH shared key
+     * was ready. Called from every success path in reEnsureEcdhKey() so that messages which
+     * showed "[Waiting for encryption key…]" are updated in-place in the adapter and saved
+     * to Room with actual plaintext as soon as the key becomes available.
+     *
+     * Messages that still fail to decrypt (key available but ciphertext corrupted) are
+     * dropped from the queue and left as transient placeholders — NOT persisted to Room.
+     */
+    private void retryPendingDecryption() {
+        if (pendingDecryptQueue.isEmpty()) return;
+        SecretKey k = CryptoInitializer.getSharedKey(this);
+        if (k == null) {
+            Log.w(TAG, "retryPendingDecryption: key still null — will retry on next key event");
+            return;
+        }
+        List<Message> queue = new ArrayList<>(pendingDecryptQueue);
+        pendingDecryptQueue.clear();
+        for (Message pending : queue) {
+            try {
+                String decrypted = CryptoHelper.decrypt(pending.getText(), k);
+                if (decrypted == null) {
+                    Log.w(TAG, "retryPendingDecryption: decrypt returned null for msg " + pending.getId());
+                    continue;
+                }
+                // Replace the "[Waiting…]" placeholder already in the adapter
+                adapter.updateMessage(pending.getId(), m -> {
+                    m.setText(decrypted);
+                    m.setEncrypted(false);
+                });
+                // Persist the properly-decrypted version to Room
+                Message toSave = new Message(
+                    pending.getId(), pending.getConversationId(), pending.getSender(),
+                    decrypted, pending.getTimestamp(), false,
+                    pending.getMediaUrl(), pending.getMediaType());
+                if (pending.getReplyToId()    != null) toSave.setReplyToId(pending.getReplyToId());
+                if (pending.getReplyPreview() != null) toSave.setReplyPreview(pending.getReplyPreview());
+                toSave.setExpiresAt(pending.getExpiresAt());
+                if (pending.getStatus() != null) toSave.setStatus(pending.getStatus());
+                saveToRoom(toSave);
+                Log.d(TAG, "retryPendingDecryption: decrypted and saved msg " + pending.getId());
+            } catch (Exception ex) {
+                Log.w(TAG, "retryPendingDecryption: decrypt still failed for msg " + pending.getId(), ex);
+            }
+        }
     }
 
 }

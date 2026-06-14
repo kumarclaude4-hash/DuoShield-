@@ -136,10 +136,14 @@ public class LockScreenActivity extends AppCompatActivity {
         etPin.setText("");
 
         if (failCount > PIN_BACKOFF_THRESHOLD) {
-            // Impose growing delay: each excess attempt adds BACKOFF_DELAY_MS
+            // §3.5 fix: showing an explicit countdown ("Wait N s…") reveals the existence of
+            // backoff logic and then immediately transitions to the decoy screen — a signal to
+            // an attacker that (a) rate-limiting is active and (b) the next screen is a decoy.
+            // Instead, show a generic "Incorrect PIN" message and silently apply the delay
+            // before opening decoy chats, so the backoff is invisible.
             long delay = (failCount - PIN_BACKOFF_THRESHOLD) * BACKOFF_DELAY_MS;
             setInputEnabled(false);
-            tvError.setText("Too many attempts. Wait " + (delay / 1000) + " s…");
+            tvError.setText("Incorrect PIN");
             tvError.setVisibility(View.VISIBLE);
             etPin.postDelayed(() -> {
                 setInputEnabled(true);
