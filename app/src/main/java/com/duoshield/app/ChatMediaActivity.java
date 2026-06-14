@@ -2,6 +2,11 @@ package com.duoshield.app;
 
 import android.Manifest;
 import android.app.AlertDialog;
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
+import com.duoshield.app.db.SelfDestructWorker;
+import java.util.concurrent.TimeUnit;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -114,6 +119,12 @@ public class ChatMediaActivity extends BaseActivity {
     private LinearLayout pinnedBanner;
     private TextView     pinnedText, pinnedCount;
     private ImageView    pinnedCloseBtn;
+    private LinearLayout disappearTimerBanner;
+    private TextView     tvDisappearTimer;
+
+    private static final long[]   DISAPPEAR_OPTS_MS  = {0, 60_000L, 300_000L, 3_600_000L, 86_400_000L, 604_800_000L};
+    private static final String[] DISAPPEAR_OPTS_LBL = {"Off", "1 minute", "5 minutes", "1 hour", "1 day", "1 week"};
+    private static final String   DESTRUCT_WORK_TAG  = "self_destruct_work";
 
     // Voice recording
     private View         voiceRecordingBar;
@@ -205,11 +216,13 @@ public class ChatMediaActivity extends BaseActivity {
             popup.getMenu().add(0, 1, 0, "Settings");
             popup.getMenu().add(0, 2, 0, "Set Wallpaper");
             popup.getMenu().add(0, 3, 0, "Search Messages");
+            popup.getMenu().add(0, 4, 0, "Disappearing Messages");
             popup.setOnMenuItemClickListener(item -> {
                 int id = item.getItemId();
                 if (id == 1) { startActivity(new Intent(this, SettingsActivity.class)); return true; }
                 if (id == 2) { showWallpaperDialog(); return true; }
                 if (id == 3) { startActivity(new Intent(this, MessageSearchActivity.class)); return true; }
+                if (id == 4) { showDisappearPicker(); return true; }
                 return false;
             });
             popup.show();
@@ -231,6 +244,8 @@ public class ChatMediaActivity extends BaseActivity {
         pinnedText          = findViewById(R.id.pinnedText);
         pinnedCount         = findViewById(R.id.pinnedCount);
         pinnedCloseBtn      = findViewById(R.id.pinnedCloseBtn);
+        disappearTimerBanner = findViewById(R.id.disappearTimerBanner);
+        tvDisappearTimer     = findViewById(R.id.tvDisappearTimer);
 
         // Voice recording
         voiceRecordingBar  = findViewById(R.id.voiceRecordingBar);
@@ -606,6 +621,7 @@ public class ChatMediaActivity extends BaseActivity {
             if (msgListener  == null) reEnsureEcdhKey();   // re-derives key then starts listener
             if (convListener == null) listenForConvUpdates();
         }
+        updateDisappearBanner();
     }
 
     @Override protected void onStop() {
@@ -910,6 +926,54 @@ public class ChatMediaActivity extends BaseActivity {
 
     private long getDisappearMs() {
         return getSharedPreferences("duoshield_prefs", MODE_PRIVATE).getLong("disappear_ms", 0);
+    }
+
+    private void showDisappearPicker() {
+        long current = getDisappearMs();
+        int checked = 0;
+        for (int i = 0; i < DISAPPEAR_OPTS_MS.length; i++) {
+            if (DISAPPEAR_OPTS_MS[i] == current) { checked = i; break; }
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("Disappearing messages")
+            .setSingleChoiceItems(DISAPPEAR_OPTS_LBL, checked, (d, which) -> {
+                long ms = DISAPPEAR_OPTS_MS[which];
+                getSharedPreferences("duoshield_prefs", MODE_PRIVATE)
+                    .edit().putLong("disappear_ms", ms).apply();
+                scheduleOrCancelDestruct(ms);
+                updateDisappearBanner();
+                d.dismiss();
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private void updateDisappearBanner() {
+        if (tvDisappearTimer == null || disappearTimerBanner == null) return;
+        long ms = getDisappearMs();
+        if (ms <= 0) {
+            disappearTimerBanner.setVisibility(View.GONE);
+            return;
+        }
+        String label = "Unknown";
+        for (int i = 0; i < DISAPPEAR_OPTS_MS.length; i++) {
+            if (DISAPPEAR_OPTS_MS[i] == ms) { label = DISAPPEAR_OPTS_LBL[i]; break; }
+        }
+        tvDisappearTimer.setText("\u23F1  Messages disappear after " + label);
+        disappearTimerBanner.setVisibility(View.VISIBLE);
+    }
+
+    private void scheduleOrCancelDestruct(long ms) {
+        WorkManager wm = WorkManager.getInstance(this);
+        if (ms <= 0) {
+            wm.cancelAllWorkByTag(DESTRUCT_WORK_TAG);
+            return;
+        }
+        wm.enqueueUniquePeriodicWork(
+            DESTRUCT_WORK_TAG,
+            ExistingPeriodicWorkPolicy.REPLACE,
+            new PeriodicWorkRequest.Builder(SelfDestructWorker.class, 15, TimeUnit.MINUTES)
+                .addTag(DESTRUCT_WORK_TAG).build());
     }
 
     private boolean isExpired(Message m) {
