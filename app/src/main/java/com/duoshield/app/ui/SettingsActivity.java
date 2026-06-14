@@ -37,8 +37,8 @@ public class SettingsActivity extends BaseActivity {
     private static final long   MIN_TTL         = 5L;
     private static final long   MAX_TTL         = 10_080L;
 
-    private static final long[] DISAPPEAR_MS    = {0, 60_000L, 300_000L, 3_600_000L, 86_400_000L};
-    private static final String[] DISAPPEAR_LBL = {"Off", "1 minute", "5 minutes", "1 hour", "1 day"};
+    private static final long[]   DISAPPEAR_MS  = {0, 60_000L, 300_000L, 3_600_000L, 86_400_000L, 604_800_000L};
+    private static final String[] DISAPPEAR_LBL = {"Off", "1 minute", "5 minutes", "1 hour", "1 day", "1 week"};
 
     private SharedPreferences prefs;
     private SwitchCompat      switchNotifications, switchSelfDestruct, switchBiometric, switchDarkMode;
@@ -46,7 +46,7 @@ public class SettingsActivity extends BaseActivity {
     private EditText          editTtlMinutes;
     private EditText          etDuressPin;
     private EditText          etNewPin, etConfirmPin;
-    private TextView          textTtlHint, tvPinStatus;
+    private TextView          textTtlHint, tvPinStatus, tvDisappearSub;
     private Button            btnDisappearing;
 
     private final ExecutorService bgExecutor = Executors.newSingleThreadExecutor();
@@ -76,6 +76,7 @@ public class SettingsActivity extends BaseActivity {
         etConfirmPin        = findViewById(R.id.etConfirmPin);
         tvPinStatus         = findViewById(R.id.tvPinStatus);
         btnDisappearing     = findViewById(R.id.btnDisappearing);
+        tvDisappearSub      = findViewById(R.id.tvDisappearSub);
 
         Button btnSetPin      = findViewById(R.id.btnSetPin);
         Button btnClearPin    = findViewById(R.id.btnClearPin);
@@ -250,16 +251,35 @@ public class SettingsActivity extends BaseActivity {
     // ── Disappearing messages ─────────────────────────────────────────────────
 
     private void showDisappearingPicker() {
+        long current = prefs.getLong("disappear_ms", 0);
+        int checked = 0;
+        for (int i = 0; i < DISAPPEAR_MS.length; i++) {
+            if (DISAPPEAR_MS[i] == current) { checked = i; break; }
+        }
         new AlertDialog.Builder(this)
             .setTitle("Disappearing messages")
-            .setItems(DISAPPEAR_LBL, (d, which) -> {
-                prefs.edit().putLong("disappear_ms", DISAPPEAR_MS[which]).apply();
+            .setSingleChoiceItems(DISAPPEAR_LBL, checked, (d, which) -> {
+                long ms = DISAPPEAR_MS[which];
+                prefs.edit().putLong("disappear_ms", ms).apply();
+                scheduleOrCancelDestruct(ms);
                 updateDisappearLabel();
-                Toast.makeText(this,
-                    which == 0 ? "Disappearing messages off" : "Set to " + DISAPPEAR_LBL[which],
-                    Toast.LENGTH_SHORT).show();
+                d.dismiss();
             })
+            .setNegativeButton("Cancel", null)
             .show();
+    }
+
+    private void scheduleOrCancelDestruct(long ms) {
+        WorkManager wm = WorkManager.getInstance(getApplicationContext());
+        if (ms <= 0) {
+            wm.cancelAllWorkByTag(WORK_TAG);
+        } else {
+            wm.enqueueUniquePeriodicWork(
+                WORK_TAG,
+                ExistingPeriodicWorkPolicy.REPLACE,
+                new PeriodicWorkRequest.Builder(SelfDestructWorker.class, 15, TimeUnit.MINUTES)
+                    .addTag(WORK_TAG).build());
+        }
     }
 
     private void updateDisappearLabel() {
@@ -270,6 +290,13 @@ public class SettingsActivity extends BaseActivity {
             if (DISAPPEAR_MS[i] == ttl) { label = DISAPPEAR_LBL[i]; break; }
         }
         btnDisappearing.setText(label);
+        if (tvDisappearSub != null) {
+            if (ttl <= 0) {
+                tvDisappearSub.setText("New messages will not automatically disappear.");
+            } else {
+                tvDisappearSub.setText("New messages will disappear after " + label + ".");
+            }
+        }
     }
 
     // ── Self-destruct / auto-delete ───────────────────────────────────────────
