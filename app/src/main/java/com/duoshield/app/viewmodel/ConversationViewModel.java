@@ -41,7 +41,16 @@ public class ConversationViewModel extends AndroidViewModel {
                 Object pn = snap.get("partnerName_" + myUid);
                 conv.partnerName  = pn != null ? pn.toString() : "Partner";
                 Object last = snap.get("lastMessage");
-                conv.lastMessage  = last != null ? last.toString() : "";
+                if (last != null && !last.toString().isEmpty()) {
+                    try {
+                        conv.lastMessage = com.duoshield.app.util.EncryptionHelper.decrypt(
+                            getApplication(), last.toString());
+                    } catch (Exception ignored) {
+                        conv.lastMessage = last.toString();
+                    }
+                } else {
+                    conv.lastMessage = "";
+                }
                 Object ts = snap.get("lastMessageTs");
                 conv.lastMessageTs = ts instanceof com.google.firebase.Timestamp
                     ? ((com.google.firebase.Timestamp) ts).toDate().getTime() : 0;

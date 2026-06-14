@@ -749,7 +749,11 @@ public class ChatMediaActivity extends BaseActivity {
                           }
 
                           String statusFromFs = dc.getDocument().getString("status");
-                          Message m = new Message(id, convo, from, displayText, ts, wasEncrypted, mUrl, mType);
+                          // Bug E fix: the text stored in Room is already decrypted (displayText),
+                          // so isEncrypted must be false. Storing wasEncrypted=true against
+                          // plaintext caused ForwardMessageHelper to double-decrypt (silently
+                          // swallowed but still wrong).
+                          Message m = new Message(id, convo, from, displayText, ts, false, mUrl, mType);
                           if (rpId      != null) m.setReplyToId(rpId);
                           if (rpPrv     != null) m.setReplyPreview(rpPrv);
                           if (expAt     != null) m.setExpiresAt(expAt);
@@ -1258,6 +1262,10 @@ public class ChatMediaActivity extends BaseActivity {
         // Update lastSeen timestamp
         db.collection("chats").document(conversationId)
           .update("lastSeen_" + myUid, FieldValue.serverTimestamp());
+
+        // Bug B fix: reset the unread counter so the badge clears when chat is opened.
+        // UnreadCountHelper.reset() sets unread_<myUid> to 0 on the conversation doc.
+        com.duoshield.app.util.UnreadCountHelper.reset(conversationId, myUid);
 
         if (partnerUid == null) return;
 

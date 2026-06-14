@@ -3,9 +3,22 @@ plugins {
     id 'com.google.gms.google-services'
 }
 
+// Bug D fix: load Supabase credentials from local.properties so they are never
+// committed as string literals in Java source. Values are injected at compile
+// time via BuildConfig fields and remain absent from version control.
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localProps.load(localPropsFile.newDataInputStream())
+}
+
 android {
     namespace "com.duoshield.app"
     compileSdk 34
+
+    buildFeatures {
+        buildConfig true
+    }
 
     defaultConfig {
         applicationId "com.duoshield.app"
@@ -13,6 +26,11 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
+
+        buildConfigField "String", "SUPABASE_URL",
+            "\"${localProps.getProperty('supabase.url', '')}\""
+        buildConfigField "String", "SUPABASE_ANON_KEY",
+            "\"${localProps.getProperty('supabase.anon_key', '')}\""
     }
 
     buildTypes {

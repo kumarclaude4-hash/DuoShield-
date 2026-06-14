@@ -40,7 +40,10 @@ public class SelfDestructWorker extends Worker {
             return Result.success();
         }
 
-        long cutoff = System.currentTimeMillis() - (ttlMinutes * 60_000L);
+        // cutoff: age-based past timestamp used for local Room cleanup by insertion time.
+        // now:    current time used for Firestore expiresAt comparison (absolute future deadline).
+        long now    = System.currentTimeMillis();
+        long cutoff = now - (ttlMinutes * 60_000L);
 
         try {
             // 1. Delete from local Room DB (WorkManager thread — safe to call directly)
@@ -49,7 +52,7 @@ public class SelfDestructWorker extends Worker {
             Log.d(TAG, "Room: deleted messages older than " + cutoff);
 
             // 2. Delete from Firestore in batches
-            deleteFromFirestore(conversationId, cutoff);
+            deleteFromFirestore(conversationId, now);
 
             return Result.success();
 
@@ -64,18 +67,20 @@ public class SelfDestructWorker extends Worker {
      * in WriteBatches of up to {@value BATCH_LIMIT} documents each.
      * Uses {@link Tasks#await} so we can run synchronously on the WorkManager thread.
      */
-    private void deleteFromFirestore(String conversationId, long cutoff) throws Exception {
+    private void deleteFromFirestore(String conversationId, long now) throws Exception {
         FirebaseFirestore firestore = FirebaseFirestore.getInstance();
 
         // Firestore server timestamps compare cleanly against java.util.Date
         // Query by expiresAt (not timestamp) — that is the expiry deadline set at send time.
+        // expiresAt is an absolute future timestamp (now + disappearMs), so we compare against
+        // the current time (now), NOT against the age-based cutoff used for local Room cleanup.
         // Both constraints are on the same field so no composite index is required.
         QuerySnapshot snapshots = Tasks.await(
                 firestore.collection("chats")
                          .document(conversationId)
                          .collection("messages")
-                         .whereGreaterThan("expiresAt", 0L)     // has an expiry set
-                         .whereLessThan("expiresAt", cutoff)    // and it has passed
+                         .whereGreaterThan("expiresAt", 0L)  // has an expiry set
+                         .whereLessThan("expiresAt", now)    // and the deadline has passed
                          .get()
         );
 

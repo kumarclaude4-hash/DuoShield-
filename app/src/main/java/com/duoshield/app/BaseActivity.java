@@ -16,14 +16,22 @@ public class BaseActivity extends AppCompatActivity {
             WindowManager.LayoutParams.FLAG_SECURE);
     }
 
+    // Bug A fix: check shouldLock() in onStart() so it runs BEFORE any subclass
+    // onStart() override can call onAppForegrounded() and zero-out bgTs.
+    // LockScreenActivity extends AppCompatActivity directly and is unaffected.
     @Override
-    protected void onResume() {
-        super.onResume();
+    protected void onStart() {
+        super.onStart();
         if (AppLockManager.shouldLock(this)) {
             Intent intent = new Intent(this, LockScreenActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(intent);
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
     }
 
     @Override

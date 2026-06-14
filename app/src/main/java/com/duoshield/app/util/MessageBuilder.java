@@ -60,11 +60,6 @@ public class MessageBuilder {
                     doc.put("replyPreview",   encryptedReplyPreview != null ? encryptedReplyPreview : "");
                 }
 
-                String encryptedPreview = enc
-                    ? (text.length() > 80 ? text.substring(0, 80) : text)
-                    : EncryptionHelper.encrypt(ctx,
-                        text.length() > 80 ? text.substring(0, 80) : text);
-
                 FirebaseFirestore.getInstance()
                     .collection("chats").document(convId)
                     .collection("messages").document(msgId)

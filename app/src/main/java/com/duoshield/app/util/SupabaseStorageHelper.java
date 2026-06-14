@@ -4,6 +4,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import com.duoshield.app.BuildConfig;
 import com.duoshield.app.crypto.CryptoHelper;
 
 import org.json.JSONObject;
@@ -49,8 +50,10 @@ import javax.crypto.SecretKey;
 public final class SupabaseStorageHelper {
 
     // ── Constants ─────────────────────────────────────────────────────────────
-    public static final String SUPABASE_URL      = "https://swpwkwniyrvnsmqafnhz.supabase.co";
-    public static final String SUPABASE_ANON_KEY = "sb_publishable_cKOQKw5gbnM_rgkelAOPZw_gkS_-2Fl";
+    // Bug D fix: credentials come from BuildConfig (populated from local.properties
+    // at compile time) so they are never committed as string literals in source.
+    public static final String SUPABASE_URL      = BuildConfig.SUPABASE_URL;
+    public static final String SUPABASE_ANON_KEY = BuildConfig.SUPABASE_ANON_KEY;
     public static final String BUCKET_NAME       = "duoshield-media";
 
     public static final int    SIGNED_URL_TTL_SECS = 120;
