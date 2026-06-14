@@ -40,6 +40,7 @@ import com.duoshield.app.models.Message;
 import com.duoshield.app.ui.MessageAdapter;
 import com.duoshield.app.ui.SettingsActivity;
 import com.duoshield.app.ui.WaveformView;
+import com.duoshield.app.util.ConversationMetaUpdater;
 import com.duoshield.app.util.DeliveryReceiptHelper;
 import com.duoshield.app.util.SecurePrefs;
 import com.duoshield.app.util.VoiceMessagePlayer;
@@ -477,7 +478,9 @@ public class ChatMediaActivity extends BaseActivity {
         doc.put("sender", myUid); doc.put("text", "");
         doc.put("path", storagePath);           // private path — NOT a public URL
         doc.put("mediaType", "voice");
-        doc.put("type", "voice"); doc.put("isEncrypted", false);
+        doc.put("type", "voice");
+        // Bug 14: reflect whether the file bytes were encrypted before upload
+        doc.put("isEncrypted", CryptoInitializer.getSharedKey(this) != null);
         doc.put("expiresAt", exp); doc.put("timestamp", FieldValue.serverTimestamp());
         db.collection("chats").document(conversationId)
           .collection("messages").document(msgId).set(doc)
@@ -598,6 +601,11 @@ public class ChatMediaActivity extends BaseActivity {
         markMessagesAsReadAndSeen();
         clearBadge();
         applyWallpaper();
+        // Restart Firestore listeners that were detached in onStop (e.g. after opening Settings)
+        if (conversationId != null) {
+            if (msgListener  == null) reEnsureEcdhKey();   // re-derives key then starts listener
+            if (convListener == null) listenForConvUpdates();
+        }
     }
 
     @Override protected void onStop() {
@@ -999,7 +1007,9 @@ public class ChatMediaActivity extends BaseActivity {
         doc.put("sender", myUid); doc.put("text", "");
         doc.put("path", storagePath);           // private path — NOT a public URL
         doc.put("mediaType", mediaType);
-        doc.put("isEncrypted", false); doc.put("type", mediaType);
+        // Bug 14: reflect whether the file bytes were encrypted before upload
+        doc.put("isEncrypted", CryptoInitializer.getSharedKey(this) != null);
+        doc.put("type", mediaType);
         doc.put("expiresAt", exp); doc.put("timestamp", FieldValue.serverTimestamp());
         db.collection("chats").document(conversationId)
           .collection("messages").document(msgId).set(doc)
@@ -1076,11 +1086,15 @@ public class ChatMediaActivity extends BaseActivity {
           .addOnSuccessListener(v -> {
               // Update optimistic entry: status → "sent", and save plain text to Room
               adapter.updateMessage(msgId, m -> m.setStatus("sent"));
-              Message stored = new Message(msgId, conversationId, myUid, ciphertext, now, true);
+              // Bug 5: store plaintext (not ciphertext) in Room — search & export use Room
+              Message stored = new Message(msgId, conversationId, myUid, plaintext, now, false);
               stored.setExpiresAt(exp);
               stored.setStatus("sent");
               if (rId != null) { stored.setReplyToId(rId); stored.setReplyPreview(rPrv); }
               saveToRoom(stored);
+              // Bug 7/10: update conversation preview after each sent text message
+              ConversationMetaUpdater.update(ChatMediaActivity.this, conversationId, myUid,
+                  partnerUid, plaintext.length() > 80 ? plaintext.substring(0, 80) : plaintext);
               notifyPartner("DuoShield", "New message");
           })
           .addOnFailureListener(e -> {

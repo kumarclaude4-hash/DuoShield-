@@ -50,18 +50,18 @@ service cloud.firestore {
     }
 
     // User ID → Firebase UID mapping (used for pairing by DS-XXXXXXXX)
-    // Public read so reset flow can resolve without auth.
-    // Write only by authenticated users (set once at signup).
+    // Read restricted to authenticated users only — open read leaks all user IDs.
     match /identities/{userId} {
-      allow read:  if true;
+      allow read:  if request.auth != null;
       allow write: if request.auth != null;
     }
 
-    // Passphrase recovery blob: AES-GCM({email, passphrase}, PBKDF2(recoveryCode))
-    // Useless without the user's recovery code.
+    // Passphrase recovery blob: AES-GCM({email, passphrase}, PBKDF2(recoveryCode)).
+    // Even though the blob is encrypted, restricting to the owner prevents offline
+    // brute-force attacks against the full corpus.
     match /recovery/{uid} {
-      allow read:  if true;
-      allow write: if request.auth != null;
+      allow read:  if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && request.auth.uid == uid;
     }
 
   }

@@ -69,12 +69,12 @@ public class MessageViewModel extends AndroidViewModel {
         m.setTimestamp(ts instanceof com.google.firebase.Timestamp
             ? ((com.google.firebase.Timestamp) ts).toDate().getTime()
             : ts instanceof Long ? (Long) ts : 0L);
-        m.setMediaUrl(doc.getString("mediaUrl"));
+        m.setMediaUrl(doc.getString("path"));           // was "mediaUrl" — Supabase schema uses "path"
         m.setMediaType(doc.getString("type"));
         m.setReaction(doc.getString("reaction"));
         m.setReplyToId(doc.getString("replyToId"));
-        m.setReplyPreview(doc.getString("replyToText"));
-        Object da = doc.get("destructAt");
+        m.setReplyPreview(doc.getString("replyPreview")); // was "replyToText"
+        Object da = doc.get("expiresAt");                // was "destructAt"
         m.setExpiresAt(da instanceof Long ? (Long) da : 0L);
         Boolean edited = doc.getBoolean("edited");
         m.setEdited(Boolean.TRUE.equals(edited));

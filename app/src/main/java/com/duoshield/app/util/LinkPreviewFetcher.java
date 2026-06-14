@@ -38,7 +38,7 @@ public class LinkPreviewFetcher {
         void onResult(Preview preview);
     }
 
-    private static final Map<String, Preview>  cache       = new HashMap<>();
+    private static final Map<String, Preview>  cache       = new java.util.concurrent.ConcurrentHashMap<>();
     private static final ExecutorService        executor    = Executors.newFixedThreadPool(3);
     private static final Handler                mainHandler = new Handler(Looper.getMainLooper());
 

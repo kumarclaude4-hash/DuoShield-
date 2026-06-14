@@ -68,11 +68,14 @@ public class SelfDestructWorker extends Worker {
         FirebaseFirestore firestore = FirebaseFirestore.getInstance();
 
         // Firestore server timestamps compare cleanly against java.util.Date
+        // Query by expiresAt (not timestamp) — that is the expiry deadline set at send time.
+        // Both constraints are on the same field so no composite index is required.
         QuerySnapshot snapshots = Tasks.await(
                 firestore.collection("chats")
                          .document(conversationId)
                          .collection("messages")
-                         .whereLessThan("timestamp", new Date(cutoff))
+                         .whereGreaterThan("expiresAt", 0L)     // has an expiry set
+                         .whereLessThan("expiresAt", cutoff)    // and it has passed
                          .get()
         );
 

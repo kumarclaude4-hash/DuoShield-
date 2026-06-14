@@ -73,16 +73,25 @@ export const notifyOnMessage = onDocumentCreated(
       try {
         await getMessaging().send({
           token: fcmToken,
+          // notification block is required to wake a killed app on Android 10+.
+          // data-only FCM is not delivered to onMessageReceived() when the process is dead.
+          notification: {
+            title: "DuoShield",
+            body: "New message",
+          },
           data: {
             type: "new_message",
             chatId,
             messageId,
-            // Body text is intentionally vague — actual content is end-to-end encrypted
             title: "DuoShield",
             body: "New message",
           },
           android: {
             priority: "high",
+            notification: {
+              channelId: "duoshield_messages",
+              sound: "default",
+            },
           },
         });
         logger.info("notifyOnMessage: FCM sent", { recipientUid, messageId });

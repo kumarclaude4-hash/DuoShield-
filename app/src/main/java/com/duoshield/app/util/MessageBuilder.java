@@ -54,7 +54,7 @@ public class MessageBuilder {
                 doc.put("type",      "text");
                 doc.put("timestamp", FieldValue.serverTimestamp());
                 doc.put("status",    "sent");
-                doc.put("encrypted", enc);
+                doc.put("isEncrypted", enc);
                 if (replyToId != null) {
                     doc.put("replyToId",      replyToId);
                     doc.put("replyPreview",   encryptedReplyPreview != null ? encryptedReplyPreview : "");

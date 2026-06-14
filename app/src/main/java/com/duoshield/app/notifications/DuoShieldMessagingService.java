@@ -15,7 +15,10 @@ public class DuoShieldMessagingService extends FirebaseMessagingService {
         SharedPreferences prefs = getSharedPreferences("duoshield_prefs", MODE_PRIVATE);
         prefs.edit().putString("fcm_token", token).apply();
 
-        String myUid = prefs.getString("my_uid", null);
+        // Bug 3b fix: use FirebaseAuth directly — SharedPrefs "my_uid" may not be written
+        // yet on a fresh install when the FCM token first arrives.
+        String myUid = com.google.firebase.auth.FirebaseAuth.getInstance().getUid();
+        if (myUid == null) myUid = prefs.getString("my_uid", null);
         if (myUid != null) {
             FirebaseFirestore.getInstance()
                     .collection("users")

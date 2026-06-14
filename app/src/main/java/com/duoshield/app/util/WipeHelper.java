@@ -22,7 +22,7 @@ public class WipeHelper {
             } catch (Exception ignored) {}
         });
 
-        prefs.edit().clear().apply();
+        prefs.edit().clear().commit(); // synchronous — ensures prefs are cleared before SignInActivity reads them
 
         try {
             File cache = ctx.getCacheDir();

@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.duoshield.app.models.Conversation;
 import com.duoshield.app.ui.ConversationAdapter;
 import com.duoshield.app.util.AppLockManager;
+import com.duoshield.app.util.EncryptionHelper;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.ListenerRegistration;
@@ -125,7 +126,16 @@ public class ConversationListActivity extends BaseActivity {
                 conv.partnerName = pName != null ? pName.toString() : "Partner";
 
                 Object last = snap.get("lastMessage");
-                conv.lastMessage = last != null ? last.toString() : "";
+                if (last != null && !last.toString().isEmpty()) {
+                    try {
+                        conv.lastMessage = EncryptionHelper.decrypt(
+                            ConversationListActivity.this, last.toString());
+                    } catch (Exception ignored) {
+                        conv.lastMessage = last.toString(); // fallback: show raw if decrypt fails
+                    }
+                } else {
+                    conv.lastMessage = "";
+                }
 
                 Object ts = snap.get("lastMessageTs");
                 conv.lastMessageTs = ts instanceof com.google.firebase.Timestamp

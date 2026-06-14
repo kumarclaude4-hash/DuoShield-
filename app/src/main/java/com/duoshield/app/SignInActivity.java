@@ -458,15 +458,21 @@ public class SignInActivity extends AppCompatActivity {
     private void reDeriveEcdhIfNeeded(String myUid, String partnerUid) {
         android.content.SharedPreferences secure =
             com.duoshield.app.util.SecurePrefs.get(getApplicationContext());
-        String existing = secure.getString(
-            com.duoshield.app.crypto.CryptoInitializer.KEY_SHARED_AES, null);
-        if (existing != null) return; // already have the shared key
+        // Do NOT exit early based on key presence alone — partner may have reinstalled
+        // and rotated their EC key pair. Always fetch the current pub key first.
 
         // Fetch partner's current EC public key from Firestore
         db.collection("users").document(partnerUid).get()
             .addOnSuccessListener(doc -> {
                 String partnerPub = doc.getString("ecPublicKey");
                 if (partnerPub == null) return;
+
+                // Skip re-derive only when key exists AND partner's pub key hasn't rotated
+                String storedPub = secure.getString(
+                    com.duoshield.app.crypto.CryptoInitializer.KEY_PARTNER_EC_PUBLIC, null);
+                String existingKey = secure.getString(
+                    com.duoshield.app.crypto.CryptoInitializer.KEY_SHARED_AES, null);
+                if (existingKey != null && partnerPub.equals(storedPub)) return;
                 // Crypto work on background thread
                 new Thread(() -> {
                     try {
